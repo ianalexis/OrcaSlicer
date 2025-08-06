@@ -1,0 +1,182 @@
+name: Check Wiki Doc
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'doc/**/*.md'
+      - ".github/workflows/check_wiki_doc.yml"
+  
+  push:
+    branches:
+      - main
+    paths:
+      - 'doc/**/*.md'
+      - ".github/workflows/check_wiki_doc.yml"
+
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+
+jobs:
+  check_image_links:
+    name: Check Image Links in Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for relative image paths and missing raw=true
+        id: check_paths
+        run: |
+          echo "Checking for image issues in doc/ folder..."
+          
+          # Search for .md files in doc/ folder
+          found_issues=false
+          error_details=""
+          
+          # Search for problematic patterns in .md files
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              echo "Checking file: $file"
+              
+              line_num=1
+              while IFS= read -r line; do
+                # Check for relative image paths: ](../images, ](../../images, ](/images
+                if echo "$line" | grep -E '\]\(\.\./images|\]\(\.\./\.\./images|\]\(/images' > /dev/null; then
+                  found_issues=true
+                  issue_line="File: $file, Line: $line_num - RELATIVE PATH: $line"
+                  echo "❌ RELATIVE PATH ISSUE: $issue_line"
+                  error_details="${error_details}${issue_line}\n"
+                fi
+                
+                # Check for GitHub image URLs without ?raw=true
+                if echo "$line" | grep -E 'github\.com/[^)]*\.(png|jpg|jpeg|gif|svg)\)' > /dev/null; then
+                  if ! echo "$line" | grep -E '\?raw=true\)' > /dev/null; then
+                    found_issues=true
+                    issue_line="File: $file, Line: $line_num - MISSING ?raw=true: $line"
+                    echo "❌ MISSING ?raw=true ISSUE: $issue_line"
+                    error_details="${error_details}${issue_line}\n"
+                  fi
+                fi
+                
+                # Check if alt text matches filename (![alttext](path/filename.ext))
+                if echo "$line" | grep -E '!\[[^]]*\]\([^)]*\.(png|jpg|jpeg|gif|svg)(\?raw=true)?\)' > /dev/null; then
+                  # Extract alt text and filename
+                  alt_text=$(echo "$line" | sed -n 's/.*!\[\([^]]*\)\].*/\1/p')
+                  filename=$(echo "$line" | sed -n 's/.*\/\([^/)]*\)\.(png|jpg|jpeg|gif|svg).*/\1/p')
+                  
+                  if [ -n "$alt_text" ] && [ -n "$filename" ] && [ "$alt_text" != "$filename" ]; then
+                    found_issues=true
+                    issue_line="File: $file, Line: $line_num - ALT TEXT MISMATCH: Alt text '${alt_text}' should match filename '${filename}': $line"
+                    echo "❌ ALT TEXT MISMATCH: $issue_line"
+                    error_details="${error_details}${issue_line}\n"
+                  fi
+                fi
+                
+                ((line_num++))
+              done < "$file"
+            fi
+          done < <(find doc/ -name "*.md" -type f 2>/dev/null || true)
+          
+          if [ "$found_issues" = true ]; then
+            echo "found_issues=true" >> $GITHUB_OUTPUT
+            echo "error_details<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$error_details" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "found_issues=false" >> $GITHUB_OUTPUT
+            echo "✅ No image issues found!"
+          fi
+
+      - name: Create comment for PR (if issues found)
+        if: github.event_name == 'pull_request' && steps.check_paths.outputs.found_issues == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const errorDetails = process.env.ERROR_DETAILS;
+            
+            const comment = `## ⚠️ Image Issues Found in Documentation
+
+            Issues were found with images that need to be corrected to work properly with GitHub Wiki.
+
+            ### Files with issues:
+            \`\`\`
+            ${errorDetails}
+            \`\`\`
+
+            ### ✅ Required solutions:
+
+            #### 1. Fix relative paths:
+            Replace relative paths with the full GitHub URL:
+
+            **❌ Incorrect paths:**
+            - \`](../images/file.png)\`
+            - \`](../../images/file.png)\` 
+            - \`](/images/file.png)\`
+
+            **✅ Correct path:**
+            - \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`
+
+            #### 2. Add ?raw=true to GitHub image URLs:
+            All GitHub image URLs must end with \`?raw=true\` to display properly in Wiki:
+
+            **❌ Missing ?raw=true:**
+            - \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png)\`
+
+            **✅ Correct with ?raw=true:**
+            - \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`
+
+            #### 3. Match alt text with filename:
+            The alt text should match the filename (without extension):
+
+            **❌ Alt text doesn't match filename:**
+            - \`![wrongname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`
+
+            **✅ Alt text matches filename:**
+            - \`![correctname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`
+
+            ### 📝 Correction examples:
+            \`\`\`markdown
+            # Before - Multiple issues
+            ![wrongname](../images/example.png)
+
+            # Before - GitHub URL without ?raw=true and wrong alt text
+            ![badname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png)
+
+            # After - Correct format
+            ![example](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png?raw=true)
+            \`\`\`
+
+            Please fix these issues before merging the PR.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+        env:
+          ERROR_DETAILS: ${{ steps.check_paths.outputs.error_details }}
+
+      - name: Fail if issues found
+        if: steps.check_paths.outputs.found_issues == 'true'
+        run: |
+          echo "❌ Image issues found that need to be corrected."
+          echo "Issues found:"
+          echo "1. Relative paths like ](../images, ](../../images or ](/images don't work properly with GitHub Wiki."
+          echo "2. GitHub image URLs must end with ?raw=true to display properly in Wiki."
+          echo "3. Alt text should match the filename (without extension)."
+          echo ""
+          echo "Please use the correct format:"
+          echo "![filename](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/filename.png?raw=true)"
+          exit 1
+
+      - name: Success message
+        if: steps.check_paths.outputs.found_issues == 'false'
+        run: |
+          echo "✅ Perfect! No image issues found in documentation."
