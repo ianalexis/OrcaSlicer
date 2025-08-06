@@ -27,11 +27,25 @@ jobs:
     name: Check Image Links in Documentation
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Setup workspace
         run: |
-          git config --global --add safe.directory /github/workspace
-          git fetch --depth=1 origin ${{ github.ref }}
-          git checkout ${{ github.sha }}
+          echo "Setting up workspace..."
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          
+          # If doc folder doesn't exist, we might need to clone
+          if [ ! -d "doc" ]; then
+            echo "doc folder not found, cloning repository..."
+            git clone --depth=1 https://github.com/${{ github.repository }}.git temp_repo
+            cp -r temp_repo/* .
+            cp -r temp_repo/.* . 2>/dev/null || true
+            rm -rf temp_repo
+          fi
+          
+          echo "Workspace setup complete"
+          echo "Files after setup:"
+          ls -la
 
       - name: Check for relative image paths and missing raw=true
         id: check_paths
