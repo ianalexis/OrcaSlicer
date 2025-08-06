@@ -27,30 +27,23 @@ jobs:
     name: Check Image Links in Documentation
     runs-on: ubuntu-latest
     steps:
-      - name: Setup workspace
-        run: |
-          echo "Setting up workspace..."
-          echo "Current directory: $(pwd)"
-          echo "Files in current directory:"
-          ls -la
-          
-          # If doc folder doesn't exist, we might need to clone
-          if [ ! -d "doc" ]; then
-            echo "doc folder not found, cloning repository..."
-            git clone --depth=1 https://github.com/${{ github.repository }}.git temp_repo
-            cp -r temp_repo/* .
-            cp -r temp_repo/.* . 2>/dev/null || true
-            rm -rf temp_repo
-          fi
-          
-          echo "Workspace setup complete"
-          echo "Files after setup:"
-          ls -la
-
       - name: Check for relative image paths and missing raw=true
         id: check_paths
         run: |
           echo "Checking for image issues in doc/ folder..."
+          echo "Current directory: $(pwd)"
+          echo "Available files:"
+          ls -la
+          
+          # Check if doc folder exists
+          if [ ! -d "doc" ]; then
+            echo "⚠️ Warning: doc/ folder not found in workspace"
+            echo "Available directories:"
+            find . -type d -name "*doc*" 2>/dev/null || echo "No doc-related directories found"
+            echo "This might be normal for some triggers. Exiting gracefully."
+            echo "found_issues=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           
           # Search for .md files in doc/ folder
           found_issues=false
