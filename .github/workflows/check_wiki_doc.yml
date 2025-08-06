@@ -28,7 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        run: |
+          git config --global --add safe.directory /github/workspace
+          git fetch --depth=1 origin ${{ github.ref }}
+          git checkout ${{ github.sha }}
 
       - name: Check for relative image paths and missing raw=true
         id: check_paths
@@ -95,73 +98,68 @@ jobs:
 
       - name: Create comment for PR (if issues found)
         if: github.event_name == 'pull_request' && steps.check_paths.outputs.found_issues == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const errorDetails = process.env.ERROR_DETAILS;
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "⚠️ Image Issues Found in Documentation" > comment.md
+            echo "" >> comment.md
+            echo "Issues were found with images that need to be corrected to work properly with GitHub Wiki." >> comment.md
+            echo "" >> comment.md
+            echo "### Files with issues:" >> comment.md
+            echo '```' >> comment.md
+            echo "${{ steps.check_paths.outputs.error_details }}" >> comment.md
+            echo '```' >> comment.md
+            echo "" >> comment.md
+            echo "### Required solutions:" >> comment.md
+            echo "" >> comment.md
+            echo "#### 1. Fix relative paths:" >> comment.md
+            echo "Replace relative paths with the full GitHub URL:" >> comment.md
+            echo "" >> comment.md
+            echo "**❌ Incorrect paths:**" >> comment.md
+            echo "- \`](../images/file.png)\`" >> comment.md
+            echo "- \`](../../images/file.png)\`" >> comment.md
+            echo "- \`](/images/file.png)\`" >> comment.md
+            echo "" >> comment.md
+            echo "**✅ Correct path:**" >> comment.md
+            echo "- \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`" >> comment.md
+            echo "" >> comment.md
+            echo "#### 2. Add ?raw=true to GitHub image URLs:" >> comment.md
+            echo "All GitHub image URLs must end with \`?raw=true\` to display properly in Wiki:" >> comment.md
+            echo "" >> comment.md
+            echo "**❌ Missing ?raw=true:**" >> comment.md
+            echo "- \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png)\`" >> comment.md
+            echo "" >> comment.md
+            echo "**✅ Correct with ?raw=true:**" >> comment.md
+            echo "- \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`" >> comment.md
+            echo "" >> comment.md
+            echo "#### 3. Match alt text with filename:" >> comment.md
+            echo "The alt text should match the filename (without extension):" >> comment.md
+            echo "" >> comment.md
+            echo "**❌ Alt text doesn't match filename:**" >> comment.md
+            echo "- \`![wrongname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`" >> comment.md
+            echo "" >> comment.md
+            echo "**✅ Alt text matches filename:**" >> comment.md
+            echo "- \`![correctname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`" >> comment.md
+            echo "" >> comment.md
+            echo "### Correction examples:" >> comment.md
+            echo '```markdown' >> comment.md
+            echo "# Before - Multiple issues" >> comment.md
+            echo "![wrongname](../images/example.png)" >> comment.md
+            echo "" >> comment.md
+            echo "# Before - GitHub URL without ?raw=true and wrong alt text" >> comment.md
+            echo "![badname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png)" >> comment.md
+            echo "" >> comment.md
+            echo "# After - Correct format" >> comment.md
+            echo "![example](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png?raw=true)" >> comment.md
+            echo '```' >> comment.md
+            echo "" >> comment.md
+            echo "Please fix these issues before merging the PR." >> comment.md
             
-            const comment = `## ⚠️ Image Issues Found in Documentation
-
-            Issues were found with images that need to be corrected to work properly with GitHub Wiki.
-
-            ### Files with issues:
-            \`\`\`
-            ${errorDetails}
-            \`\`\`
-
-            ### ✅ Required solutions:
-
-            #### 1. Fix relative paths:
-            Replace relative paths with the full GitHub URL:
-
-            **❌ Incorrect paths:**
-            - \`](../images/file.png)\`
-            - \`](../../images/file.png)\` 
-            - \`](/images/file.png)\`
-
-            **✅ Correct path:**
-            - \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`
-
-            #### 2. Add ?raw=true to GitHub image URLs:
-            All GitHub image URLs must end with \`?raw=true\` to display properly in Wiki:
-
-            **❌ Missing ?raw=true:**
-            - \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png)\`
-
-            **✅ Correct with ?raw=true:**
-            - \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`
-
-            #### 3. Match alt text with filename:
-            The alt text should match the filename (without extension):
-
-            **❌ Alt text doesn't match filename:**
-            - \`![wrongname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`
-
-            **✅ Alt text matches filename:**
-            - \`![correctname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`
-
-            ### 📝 Correction examples:
-            \`\`\`markdown
-            # Before - Multiple issues
-            ![wrongname](../images/example.png)
-
-            # Before - GitHub URL without ?raw=true and wrong alt text
-            ![badname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png)
-
-            # After - Correct format
-            ![example](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png?raw=true)
-            \`\`\`
-
-            Please fix these issues before merging the PR.`;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-        env:
-          ERROR_DETAILS: ${{ steps.check_paths.outputs.error_details }}
+            echo "Comment created in comment.md file"
+            cat comment.md
+            echo ""
+            echo "Note: Automatic PR commenting is disabled due to action restrictions in fork."
+            echo "Please review the issues above manually."
+          fi
 
       - name: Fail if issues found
         if: steps.check_paths.outputs.found_issues == 'true'
