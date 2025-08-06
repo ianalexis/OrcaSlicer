@@ -7,7 +7,7 @@ This happens by reducing the stresses put on the extrusion system as well as red
 
 This feature is especially helpful when printing at high accelerations and large flow rates as the deviations are larger in these cases.
 
-![ers-intro](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/ERS/ers-intro.png?raw=true)
+![ers-intro](/images/ERS/ers-intro.png?raw=true)
 
 - [Theory](#theory)
   - [Acceleration vs. Extrusion rate smoothing](#acceleration-vs-extrusion-rate-smoothing)
