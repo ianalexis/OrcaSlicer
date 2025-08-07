@@ -27,6 +27,9 @@ jobs:
     name: Check Image Links in Documentation
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
       - name: Check for relative image paths and missing raw=true
         id: check_paths
         run: |
