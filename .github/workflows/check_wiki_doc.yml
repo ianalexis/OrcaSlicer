@@ -56,34 +56,15 @@ jobs:
               
               line_num=1
               while IFS= read -r line; do
-                # Check for relative image paths: ](../images, ](../../images, ](/images
-                if echo "$line" | grep -E '\]\(\.\./images|\]\(\.\./\.\./images|\]\(/images' > /dev/null; then
-                  found_issues=true
-                  issue_line="File: $file, Line: $line_num - RELATIVE PATH: $line"
-                  echo "❌ RELATIVE PATH ISSUE: $issue_line"
-                  error_details="${error_details}${issue_line}\n"
-                fi
-                
-                # Check for GitHub image URLs without ?raw=true
-                if echo "$line" | grep -E 'github\.com/[^)]*\.(png|jpg|jpeg|gif|svg)\)' > /dev/null; then
-                  if ! echo "$line" | grep -E '\?raw=true\)' > /dev/null; then
-                    found_issues=true
-                    issue_line="File: $file, Line: $line_num - MISSING ?raw=true: $line"
-                    echo "❌ MISSING ?raw=true ISSUE: $issue_line"
-                    error_details="${error_details}${issue_line}\n"
-                  fi
-                fi
-                
-                # Check if alt text matches filename (![alttext](path/filename.ext))
-                if echo "$line" | grep -E '!\[[^]]*\]\([^)]*\.(png|jpg|jpeg|gif|svg)(\?raw=true)?\)' > /dev/null; then
-                  # Extract alt text and filename
-                  alt_text=$(echo "$line" | sed -n 's/.*!\[\([^]]*\)\].*/\1/p')
-                  filename=$(echo "$line" | sed -n 's/.*\/\([^/)]*\)\.(png|jpg|jpeg|gif|svg).*/\1/p')
+                # Check for any image that doesn't use the correct GitHub URL format
+                if echo "$line" | grep -E '!\[.*\]\(' > /dev/null; then
+                  echo "DEBUG: Found image line: $line"
                   
-                  if [ -n "$alt_text" ] && [ -n "$filename" ] && [ "$alt_text" != "$filename" ]; then
+                  # Check if it's NOT using the correct GitHub URL format
+                  if ! echo "$line" | grep -E '!\[.*\]\(https://github\.com/[^/]+/[^/]+/blob/main/doc/images/.*\?raw=true\)' > /dev/null; then
                     found_issues=true
-                    issue_line="File: $file, Line: $line_num - ALT TEXT MISMATCH: Alt text '${alt_text}' should match filename '${filename}': $line"
-                    echo "❌ ALT TEXT MISMATCH: $issue_line"
+                    issue_line="File: $file, Line: $line_num - INCORRECT IMAGE URL: $line"
+                    echo "❌ INCORRECT IMAGE URL: $issue_line"
                     error_details="${error_details}${issue_line}\n"
                   fi
                 fi
@@ -107,59 +88,39 @@ jobs:
         if: github.event_name == 'pull_request' && steps.check_paths.outputs.found_issues == 'true'
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "⚠️ Image Issues Found in Documentation" > comment.md
+            echo "⚠️ Image URL Issues Found in Documentation" > comment.md
             echo "" >> comment.md
-            echo "Issues were found with images that need to be corrected to work properly with GitHub Wiki." >> comment.md
+            echo "Images were found that don't use the correct GitHub URL format for Wiki compatibility." >> comment.md
             echo "" >> comment.md
             echo "### Files with issues:" >> comment.md
             echo '```' >> comment.md
             echo "${{ steps.check_paths.outputs.error_details }}" >> comment.md
             echo '```' >> comment.md
             echo "" >> comment.md
-            echo "### Required solutions:" >> comment.md
+            echo "### ✅ Required solution:" >> comment.md
+            echo "All images in documentation must use the full GitHub URL format:" >> comment.md
             echo "" >> comment.md
-            echo "#### 1. Fix relative paths:" >> comment.md
-            echo "Replace relative paths with the full GitHub URL:" >> comment.md
+            echo "**✅ Correct format:**" >> comment.md
+            echo "\`![filename](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/filename.png?raw=true)\`" >> comment.md
             echo "" >> comment.md
-            echo "**❌ Incorrect paths:**" >> comment.md
-            echo "- \`](../images/file.png)\`" >> comment.md
-            echo "- \`](../../images/file.png)\`" >> comment.md
-            echo "- \`](/images/file.png)\`" >> comment.md
+            echo "### ❌ Common incorrect formats:" >> comment.md
+            echo "- \`![image](../images/file.png)\` (relative path)" >> comment.md
+            echo "- \`![image](../../images/file.png)\` (relative path)" >> comment.md  
+            echo "- \`![image](/images/file.png)\` (absolute path)" >> comment.md
+            echo "- \`![image](https://github.com/.../file.png)\` (missing ?raw=true)" >> comment.md
+            echo "- \`![wrongname](https://github.com/.../correctname.png?raw=true)\` (alt text mismatch)" >> comment.md
             echo "" >> comment.md
-            echo "**✅ Correct path:**" >> comment.md
-            echo "- \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`" >> comment.md
-            echo "" >> comment.md
-            echo "#### 2. Add ?raw=true to GitHub image URLs:" >> comment.md
-            echo "All GitHub image URLs must end with \`?raw=true\` to display properly in Wiki:" >> comment.md
-            echo "" >> comment.md
-            echo "**❌ Missing ?raw=true:**" >> comment.md
-            echo "- \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png)\`" >> comment.md
-            echo "" >> comment.md
-            echo "**✅ Correct with ?raw=true:**" >> comment.md
-            echo "- \`](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/file.png?raw=true)\`" >> comment.md
-            echo "" >> comment.md
-            echo "#### 3. Match alt text with filename:" >> comment.md
-            echo "The alt text should match the filename (without extension):" >> comment.md
-            echo "" >> comment.md
-            echo "**❌ Alt text doesn't match filename:**" >> comment.md
-            echo "- \`![wrongname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`" >> comment.md
-            echo "" >> comment.md
-            echo "**✅ Alt text matches filename:**" >> comment.md
-            echo "- \`![correctname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/correctname.png?raw=true)\`" >> comment.md
-            echo "" >> comment.md
-            echo "### Correction examples:" >> comment.md
+            echo "### 📝 Examples:" >> comment.md
             echo '```markdown' >> comment.md
-            echo "# Before - Multiple issues" >> comment.md
-            echo "![wrongname](../images/example.png)" >> comment.md
+            echo "# ❌ Before" >> comment.md
+            echo "![example](../images/my-image.png)" >> comment.md
+            echo "![example](/images/my-image.png)" >> comment.md
             echo "" >> comment.md
-            echo "# Before - GitHub URL without ?raw=true and wrong alt text" >> comment.md
-            echo "![badname](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png)" >> comment.md
-            echo "" >> comment.md
-            echo "# After - Correct format" >> comment.md
-            echo "![example](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/example.png?raw=true)" >> comment.md
+            echo "# ✅ After" >> comment.md
+            echo "![my-image](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/my-image.png?raw=true)" >> comment.md
             echo '```' >> comment.md
             echo "" >> comment.md
-            echo "Please fix these issues before merging the PR." >> comment.md
+            echo "Please fix these image URLs before merging the PR." >> comment.md
             
             echo "Comment created in comment.md file"
             cat comment.md
@@ -171,17 +132,15 @@ jobs:
       - name: Fail if issues found
         if: steps.check_paths.outputs.found_issues == 'true'
         run: |
-          echo "❌ Image issues found that need to be corrected."
-          echo "Issues found:"
-          echo "1. Relative paths like ](../images, ](../../images or ](/images don't work properly with GitHub Wiki."
-          echo "2. GitHub image URLs must end with ?raw=true to display properly in Wiki."
-          echo "3. Alt text should match the filename (without extension)."
+          echo "❌ Incorrect image URLs found that need to be corrected."
           echo ""
-          echo "Please use the correct format:"
+          echo "All images in documentation must use the correct GitHub URL format:"
           echo "![filename](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/filename.png?raw=true)"
+          echo ""
+          echo "This ensures images display properly in GitHub Wiki."
           exit 1
 
       - name: Success message
         if: steps.check_paths.outputs.found_issues == 'false'
         run: |
-          echo "✅ Perfect! No image issues found in documentation."
+          echo "✅ Perfect! All images use the correct GitHub URL format."
