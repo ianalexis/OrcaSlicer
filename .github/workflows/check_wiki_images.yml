@@ -1,0 +1,47 @@
+
+name: Check Wiki Images
+
+on:
+  pull_request:
+    paths:
+      - 'doc/**/*.md'
+
+jobs:
+  check-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find changed markdown files
+        id: md_files
+        run: |
+          echo "files=$(git diff --name-only origin/main...HEAD | grep '^doc/.*\\.md$' | xargs)" >> $GITHUB_OUTPUT
+
+      - name: Validate image links in markdown files
+        if: steps.md_files.outputs.files != ''
+        run: |
+          failed=0
+          for file in ${{ steps.md_files.outputs.files }}; do
+            echo "Checking $file..."
+            lineno=0
+            while IFS= read -r line; do
+              lineno=$((lineno+1))
+              if [[ "$line" =~ ^!\[.*\]\(.*\)$ ]]; then
+                if [[ "$line" != *'](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images'* ]]; then
+                  echo "❌ $file:$lineno: Image does not contain the required URL start: $line"
+                  failed=1
+                fi
+                if [[ "$line" != *'?raw=true)' ]]; then
+                  echo "❌ $file:$lineno: Image does not contain the required '?raw=true)' parameter: $line"
+                  failed=1
+                fi
+              fi
+            done < "$file"
+          done
+          if [ $failed -ne 0 ]; then
+            echo "\nAt least one image does not meet the required format."
+            exit 1
+          else
+            echo "All images meet the required format."
+          fi
