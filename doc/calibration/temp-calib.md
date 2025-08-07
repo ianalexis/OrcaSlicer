@@ -28,7 +28,7 @@ There is no other calibration that can have such a big impact on the print quali
 
 Nozzle temperature is one of the most important settings to calibrate for a successful print. The temperature of the nozzle affects the viscosity of the filament, which in turn affects how well it flows through the nozzle and adheres to the print bed. If the temperature is too low, the filament may not flow properly, leading to under-extrusion, poor layer adhesion and stringing. If the temperature is too high, the filament may degrade, over-extrude and produce stringing.
 
-![temp-tower_test](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Temp-calib/temp-tower_test.gif?raw=true)
+![temp-tower_test](/images/Temp-calib/temp-tower_test.gif?raw=true)
 
 ![temp-tower_test_menu](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Temp-calib/temp-tower_test_menu.png?raw=true)
 
