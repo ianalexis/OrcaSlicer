@@ -28,18 +28,26 @@ jobs:
             lineno=0
             while IFS= read -r line; do
               lineno=$((lineno+1))
-              if [[ "$line" =~ ^!\[.*\]\((.*)\)$ ]]; then
-                img_url=$(echo "$line" | sed -n 's/^!\[.*\](\(.*\))$/\1/p')
-                if [[ ! "$img_url" =~ ^https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/.*\?raw=true$ ]]; then
-                  echo "❌ $file:$lineno: Image does not use the required absolute GitHub URL with '?raw=true': $line"
+              # Check for markdown image syntax
+              if [[ "$line" =~ !\[.*\]\(([^)]+)\) ]]; then
+                img_url="${BASH_REMATCH[1]}"
+                # Check if it matches the required format
+                if [[ ! "$img_url" =~ ^https://github\.com/SoftFever/OrcaSlicer/blob/main/doc/images/.*\?raw=true$ ]]; then
+                  echo "❌ ERROR in $file at line $lineno:"
+                  echo "   Line content: $line"
+                  echo "   Image URL found: $img_url"
+                  echo "   Expected format: https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/[path]?raw=true"
+                  echo ""
                   failed=1
                 fi
               fi
             done < "$file"
           done
           if [ $failed -ne 0 ]; then
-            echo "\nAt least one image does not meet the required format."
+            echo ""
+            echo "❌ At least one image does not meet the required format."
+            echo "All images in wiki documentation must use absolute GitHub URLs with '?raw=true' parameter."
             exit 1
           else
-            echo "All images meet the required format."
+            echo "✅ All images meet the required format."
           fi
