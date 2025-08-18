@@ -347,7 +347,7 @@ jobs:
                   }
                   
                   if ($imgRef.Url -match '^https?://(?!github\.com/SoftFever/OrcaSlicer)') {
-                      $urlIssues += "External URLs are not allowed, use GitHub raw URLs only"
+                      $urlIssues += "External URLs are not allowed."
                   }
                   
                   $issueText = if ($urlIssues.Count -gt 0) { 
