@@ -72,8 +72,8 @@ jobs:
                   $headerMatches = [regex]::Matches($content, '(?m)^#+\s+(.+)$')
                   foreach ($match in $headerMatches) {
                       $headerText = $match.Groups[1].Value.Trim()
-                      # Unified normalization: lowercase, replace spaces with dashes, remove all non-alphanumeric except dash
-                      $anchor = $headerText.ToLower() -replace '[^a-z0-9\s-]', '' -replace '\s+', '-'
+                      # GitHub-style normalization: lowercase, remove special chars, spaces to hyphens (preserving multiple spaces as multiple hyphens)
+                      $anchor = $headerText.ToLower() -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
                       $anchors += $anchor
                   }
                   
@@ -97,8 +97,8 @@ jobs:
                                   }
                                   continue
                               }
-                              # Unified normalization for fragment: lowercase, replace spaces with dashes, remove all non-alphanumeric except dash
-                              $normalizedFragment = $fragment.ToLower().Trim() -replace '[^a-z0-9\s-]', '' -replace '\s+', '-'
+                              # GitHub-style normalization for fragment: lowercase, remove special chars, spaces to hyphens (preserving multiple spaces as multiple hyphens)
+                              $normalizedFragment = $fragment.ToLower().Trim() -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
                               $availableAnchors = $anchors
                               if ($availableAnchors -notcontains $normalizedFragment) {
                                   $brokenReferences += @{
@@ -211,6 +211,7 @@ jobs:
                       }
                       
                       $normalizedFragment = $cleanFragment.ToLower().Trim()
+                      $normalizedFragment = $normalizedFragment -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
                       $availableAnchors = $docIndex[$ref.DocBase].Anchors
                       if ($availableAnchors -notcontains $normalizedFragment) {
                           $brokenReferences += @{
@@ -248,6 +249,7 @@ jobs:
                       }
                       
                       $normalizedFragment = $cleanFragment.ToLower().Trim()
+                      $normalizedFragment = $normalizedFragment -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
                       $availableAnchors = $docIndex[$link.TargetBase].Anchors
                       if ($availableAnchors -notcontains $normalizedFragment) {
                           $brokenReferences += @{
