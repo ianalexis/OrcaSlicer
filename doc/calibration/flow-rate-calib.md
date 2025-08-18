@@ -13,7 +13,7 @@ The Flow Ratio determines how much filament is extruded and plays a crucial role
 
 > [!WARNING]
 > **BambuLab Printers:** Make sure you do **not** select the 'Flow calibration' option.
-> ![flowrate-Bambulab-uncheck](https://github.com/SoftFeer/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowrate-Bambulab-uncheck.png?raw=true)
+> ![flowrate-Bambulab-uncheck](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowrate-Bambulab-uncheck.png?raw=true)
 
 > [!NOTE]
 > After v2.3.0, the [Top Pattern](strength_settings_top_bottom_shells##surface-pattern) changed to [Archimedean chords](strength_settings_patterns#archimedean-chords) from [Monotonic Line](strength_settings_patterns#monotonic-line).
