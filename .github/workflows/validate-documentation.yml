@@ -263,15 +263,22 @@ jobs:
           if ($brokenReferences.Count -gt 0) {
               Write-Host "::error::Documentation validation failed"
               
+              # Build error summary for PR comment
+              $errorSummary = ""
+              
               # Report link errors
               if ($linkErrors) {
                   Write-Host "::group::🔗 Link Validation Errors"
+                  $errorSummary += "## 🔗 Link Validation Errors`n`n"
                   $linkErrors | Group-Object SourceFile | ForEach-Object {
                       Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
+                      $errorSummary += "**📄 doc/$($_.Name):**`n"
                       $_.Group | Sort-Object Line | ForEach-Object {
                           Write-Host "  Line $($_.Line): $($_.Target) - $($_.Issue)" -ForegroundColor Red
                           Write-Host "::error file=doc/$($_.SourceFile),line=$($_.Line)::$($_.Target) - $($_.Issue)"
+                          $errorSummary += "- Line $($_.Line): ``$($_.Target)`` - $($_.Issue)`n"
                       }
+                      $errorSummary += "`n"
                   }
                   Write-Host "::endgroup::"
               }
@@ -279,15 +286,24 @@ jobs:
               # Report image errors
               if ($imageErrors) {
                   Write-Host "::group::🖼️ Image Validation Errors"
+                  $errorSummary += "## 🖼️ Image Validation Errors`n`n"
                   $imageErrors | Group-Object SourceFile | ForEach-Object {
                       Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
+                      $errorSummary += "**📄 doc/$($_.Name):**`n"
                       $_.Group | Sort-Object Line | ForEach-Object {
                           Write-Host "  Line $($_.Line): $($_.Issue)" -ForegroundColor Red
                           Write-Host "::error file=doc/$($_.SourceFile),line=$($_.Line)::$($_.Issue)"
+                          $errorSummary += "- Line $($_.Line): $($_.Issue)`n"
                       }
+                      $errorSummary += "`n"
                   }
                   Write-Host "::endgroup::"
               }
+              
+              # Export error summary for PR comment
+              Add-Content -Path $env:GITHUB_ENV -Value "VALIDATION_ERRORS<<EOF"
+              Add-Content -Path $env:GITHUB_ENV -Value $errorSummary
+              Add-Content -Path $env:GITHUB_ENV -Value "EOF"
               
               exit 1
           } else {
@@ -300,11 +316,15 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const validationErrors = process.env.VALIDATION_ERRORS || '';
+            
+            const body = `❌ **Documentation validation failed**
+            
+            ${validationErrors || 'Please check the workflow logs for details about the validation errors.'}`;
+            
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ **Documentation validation failed**
-              
-              Please check the workflow logs for details about the validation errors.`
+              body: body
             })
