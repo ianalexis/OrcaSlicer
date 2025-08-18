@@ -145,13 +145,13 @@ jobs:
               foreach ($ref in $tabReferences) {
                   $docExists = $docIndex.ContainsKey($ref.DocBase)
                   
-                  # Check if fragment starts with ## (double hash - not allowed)
-                  if ($ref.Fragment -and $ref.Fragment.StartsWith('##')) {
+                  # Check if fragment contains ## (double hash - not allowed)
+                  if ($ref.Fragment -and $ref.Fragment.Contains('##')) {
                       $brokenReferences += @{
                           SourceFile = $ref.SourceFile
                           Line = $ref.Line
                           Target = "$($ref.DocBase)#$($ref.Fragment)"
-                          Issue = "Double ## reference is not allowed. Use single # for fragments."
+                          Issue = "Use single # for fragments."
                           Type = "Link"
                       }
                   } elseif (-not $docExists) {
@@ -191,8 +191,8 @@ jobs:
               foreach ($link in $doc.Links) {
                   $targetExists = $docIndex.ContainsKey($link.TargetBase)
                   
-                  # Check if fragment starts with ## (double hash - not allowed)
-                  if ($link.Fragment -and $link.Fragment.StartsWith('##')) {
+                  # Check if fragment contains ## (double hash - not allowed)
+                  if ($link.Fragment -and $link.Fragment.Contains('##')) {
                       $brokenReferences += @{
                           SourceFile = $link.SourceFile
                           Line = $link.Line
