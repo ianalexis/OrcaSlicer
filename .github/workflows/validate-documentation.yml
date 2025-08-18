@@ -62,8 +62,6 @@ jobs:
                   $lines = Get-Content -Path $mdFile.FullName -Encoding UTF8
                   
                   # Initialize anchors array for this file
-                  $anchors = @()
-                  
                   # Extract HTML anchors (name/id attributes)
                   $anchorMatches = [regex]::Matches($content, '(?i)<a\s+[^>]*(?:name|id)\s*=\s*[`"'']([^`"'']+)[`"''][^>]*>')
                   foreach ($match in $anchorMatches) {
@@ -81,10 +79,37 @@ jobs:
                   
                   # Parse markdown links
                   $links = @()
-                  $linkRegex = '(?<!!)\[[^\]]*\]\(([^)]+)\)'
+                  $linkRegex = '(?<!!)[^\]]*\]\(([^)]+)\)'
                   for ($i = 0; $i -lt $lines.Count; $i++) {
                       foreach ($linkMatch in [regex]::Matches($lines[$i], $linkRegex)) {
                           $destRaw = $linkMatch.Groups[1].Value.Trim()
+                          # Validate internal redirection like [text](#subtitle)
+                          if ($destRaw.StartsWith('#')) {
+                              $fragment = $destRaw.Substring(1)
+                              # If there is more than one #, report as error
+                              if ($fragment.Contains('#')) {
+                                  $brokenReferences += @{
+                                      SourceFile = $relPath
+                                      Line = $i + 1
+                                      Target = $destRaw
+                                      Issue = "Internal link must use only one #."
+                                      Type = "Link"
+                                  }
+                                  continue
+                              }
+                              $normalizedFragment = $fragment.ToLower().Trim()
+                              $availableAnchors = $anchors
+                              if ($availableAnchors -notcontains $normalizedFragment) {
+                                  $brokenReferences += @{
+                                      SourceFile = $relPath
+                                      Line = $i + 1
+                                      Target = $destRaw
+                                      Issue = "Internal fragment does not exist in this file."
+                                      Type = "Link"
+                                  }
+                              }
+                              continue
+                          }
                           if ($destRaw -match '^(?:https?:|mailto:|data:|#|\\)') { continue }
                           
                           # Check for double ## before splitting
