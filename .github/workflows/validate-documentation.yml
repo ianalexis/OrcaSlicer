@@ -273,11 +273,22 @@ jobs:
               $lines = Get-Content $file.FullName -Encoding UTF8
               $relPath = (Resolve-Path $file.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
               
+              # Track fenced code blocks so we don't parse examples inside them as real images
+              $inCodeFence = $false
               for ($lineNumber = 0; $lineNumber -lt $lines.Count; $lineNumber++) {
                   $line = $lines[$lineNumber]
+                  # Detect start/end of fenced code blocks (``` or ~~~). Toggle state and skip the fence line itself.
+                  if ($line.TrimStart() -match '^(```|~~~)') {
+                      $inCodeFence = -not $inCodeFence
+                      continue
+                  }
+                  if ($inCodeFence) { continue }
+                  
+                  # Remove inline code spans delimited by backticks to avoid false positives like `![alt](url)` examples
+                  $lineForParsing = [regex]::Replace($line, '`[^`]*`', '')
                   
                   # Parse markdown images: ![alt](url)
-                  foreach ($match in [regex]::Matches($line, "!\[([^\]]*)\]\(([^)]+)\)")) {
+                  foreach ($match in [regex]::Matches($lineForParsing, "!\[([^\]]*)\]\(([^)]+)\)")) {
                       $altText = $match.Groups[1].Value
                       $url = $match.Groups[2].Value
                       
@@ -303,7 +314,7 @@ jobs:
                   }
                   
                   # Parse HTML images: <img ...>
-                  foreach ($match in [regex]::Matches($line, '<img\s+[^>]*>')) {
+                  foreach ($match in [regex]::Matches($lineForParsing, '<img\s+[^>]*>')) {
                       $imgTag = $match.Value
                       $altText = ""
                       $src = ""
