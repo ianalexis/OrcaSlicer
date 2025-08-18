@@ -97,7 +97,8 @@ jobs:
                                   }
                                   continue
                               }
-                              $normalizedFragment = $fragment.ToLower().Trim()
+                              # Normalize fragment: lowercase, replace spaces with dashes, remove special chars
+                              $normalizedFragment = $fragment.ToLower().Trim() -replace '[^\w\s-]', '' -replace '\s+', '-'
                               $availableAnchors = $anchors
                               if ($availableAnchors -notcontains $normalizedFragment) {
                                   $brokenReferences += @{
