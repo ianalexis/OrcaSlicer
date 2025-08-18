@@ -80,8 +80,15 @@ jobs:
                   # Parse markdown links
                   $links = @()
                   $linkRegex = '(?<!!)[^\]]*\]\(([^)]+)\)'
+                  # Track fenced code blocks to skip link examples inside them
+                  $inCodeFence = $false
                   for ($i = 0; $i -lt $lines.Count; $i++) {
-                      foreach ($linkMatch in [regex]::Matches($lines[$i], $linkRegex)) {
+                      $line = $lines[$i]
+                      if ($line.TrimStart() -match '^(```|~~~)') { $inCodeFence = -not $inCodeFence; continue }
+                      if ($inCodeFence) { continue }
+                      # Remove inline code spans to avoid parsing `[text](url)` inside backticks
+                      $lineForParsing = [regex]::Replace($line, '`[^`]*`', '')
+                      foreach ($linkMatch in [regex]::Matches($lineForParsing, $linkRegex)) {
                           $destRaw = $linkMatch.Groups[1].Value.Trim()
                           # Validate internal redirection like [text](#subtitle)
                           if ($destRaw.StartsWith('#')) {
