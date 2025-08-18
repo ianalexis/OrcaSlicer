@@ -257,42 +257,17 @@ jobs:
           }
           
           # Report results
-          # Deduplicate broken references (same file, line, target, and type)
-          $uniqueBrokenReferences = @()
-          $seen = @{}
-          foreach ($ref in $brokenReferences) {
-              $key = "$($ref.SourceFile):$($ref.Line):$($ref.Target):$($ref.Type)"
-              if (-not $seen.ContainsKey($key)) {
-                  $seen[$key] = $true
-                  $uniqueBrokenReferences += $ref
-              }
-          }
+          $linkErrors = $brokenReferences | Where-Object { $_.Type -eq "Link" }
+          $imageErrors = $brokenReferences | Where-Object { $_.Type -eq "Image" }
           
-          $linkErrors = $uniqueBrokenReferences | Where-Object { $_.Type -eq "Link" }
-          $imageErrors = $uniqueBrokenReferences | Where-Object { $_.Type -eq "Image" }
-          $totalErrors = $linkErrors.Count + $imageErrors.Count
-          
-          # Debug info
-          Write-Host "Debug: Original brokenReferences.Count = $($brokenReferences.Count)"
-          Write-Host "Debug: Unique brokenReferences.Count = $($uniqueBrokenReferences.Count)"
-          Write-Host "Debug: linkErrors.Count = $($linkErrors.Count)"
-          Write-Host "Debug: imageErrors.Count = $($imageErrors.Count)"
-          Write-Host "Debug: totalErrors = $totalErrors"
-          
-          # Show all broken references for debugging
-          Write-Host "Debug: All unique broken references:"
-          foreach ($ref in $uniqueBrokenReferences) {
-              Write-Host "  - File: $($ref.SourceFile), Line: $($ref.Line), Type: $($ref.Type), Target: $($ref.Target), Issue: $($ref.Issue)"
-          }
-          
-          if ($totalErrors -gt 0) {
-              Write-Host "::error::Found $totalErrors validation errors ($($linkErrors.Count) link errors, $($imageErrors.Count) image errors)"
+          if ($brokenReferences.Count -gt 0) {
+              Write-Host "::error::Found $($brokenReferences.Count) validation errors ($($linkErrors.Count) link errors, $($imageErrors.Count) image errors)"
               
               # Build error summary
               $errorSummary = ""
               
               @(@{ Errors = $linkErrors; Title = "🔗 Link Validation Errors"; Prefix = "" }, 
-                @{ Errors = $imageErrors; Title = "�️ Image Validation Errors"; Prefix = "doc/" }) | ForEach-Object {
+                @{ Errors = $imageErrors; Title = "🖼️ Image Validation Errors"; Prefix = "doc/" }) | ForEach-Object {
                   if ($_.Errors.Count -gt 0) {
                       Write-Host "::group::$($_.Title)"
                       $errorSummary += "## $($_.Title) ($($_.Errors.Count))`n`n"
@@ -313,7 +288,7 @@ jobs:
               
               # Export for PR comment
               @("VALIDATION_ERRORS<<EOF", $errorSummary, "EOF", 
-                "ERROR_COUNT=$totalErrors", 
+                "ERROR_COUNT=$($brokenReferences.Count)", 
                 "LINK_ERROR_COUNT=$($linkErrors.Count)", 
                 "IMAGE_ERROR_COUNT=$($imageErrors.Count)") | Add-Content -Path $env:GITHUB_ENV
               
