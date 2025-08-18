@@ -16,8 +16,7 @@ Orca slicer is a powerful open source slicer for FFF (FDM) 3D Printers. This wik
 - [Developer Section](#developer-section)
 
 > [!NOTE]
-> The Wiki is **Work In Progress** so bear with us while we get it up and running!  
-> Please consider contributing to the wiki following the [How to contribute to the wiki](How-to-wiki) guide.
+> The Wiki is **Work In Progress** so bear with us while we get it up and running! Please consider contributing to the wiki following the [How to contribute to the wiki](How-to-wiki) guide.
 
 ## Printer Settings
 
