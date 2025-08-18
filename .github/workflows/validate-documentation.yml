@@ -259,9 +259,22 @@ jobs:
           # Report results
           $linkErrors = $brokenReferences | Where-Object { $_.Type -eq "Link" }
           $imageErrors = $brokenReferences | Where-Object { $_.Type -eq "Image" }
+          $totalErrors = $linkErrors.Count + $imageErrors.Count
           
-          if ($brokenReferences.Count -gt 0) {
-              Write-Host "::error::Found $($brokenReferences.Count) validation errors ($($linkErrors.Count) link errors, $($imageErrors.Count) image errors)"
+          # Debug info
+          Write-Host "Debug: brokenReferences.Count = $($brokenReferences.Count)"
+          Write-Host "Debug: linkErrors.Count = $($linkErrors.Count)"
+          Write-Host "Debug: imageErrors.Count = $($imageErrors.Count)"
+          Write-Host "Debug: totalErrors = $totalErrors"
+          
+          # Show all broken references for debugging
+          Write-Host "Debug: All broken references:"
+          foreach ($ref in $brokenReferences) {
+              Write-Host "  - File: $($ref.SourceFile), Line: $($ref.Line), Type: $($ref.Type), Target: $($ref.Target), Issue: $($ref.Issue)"
+          }
+          
+          if ($totalErrors -gt 0) {
+              Write-Host "::error::Found $totalErrors validation errors ($($linkErrors.Count) link errors, $($imageErrors.Count) image errors)"
               
               # Build error summary
               $errorSummary = ""
@@ -288,7 +301,7 @@ jobs:
               
               # Export for PR comment
               @("VALIDATION_ERRORS<<EOF", $errorSummary, "EOF", 
-                "ERROR_COUNT=$($brokenReferences.Count)", 
+                "ERROR_COUNT=$totalErrors", 
                 "LINK_ERROR_COUNT=$($linkErrors.Count)", 
                 "IMAGE_ERROR_COUNT=$($imageErrors.Count)") | Add-Content -Path $env:GITHUB_ENV
               
