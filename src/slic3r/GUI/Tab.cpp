@@ -2213,7 +2213,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("infill_direction", "strength_settings_infill#direction");
         optgroup->append_single_option_line("sparse_infill_rotate_template", "strength_settings_infill#rotation");
         optgroup->append_single_option_line("skin_infill_density", "strength_settings_patterns#locked-zag");
-        optgroup->append_single_option_line("skeleton_infill_density", "strength_settings_pattern#locked-zag");
+        optgroup->append_single_option_line("skeleton_infill_density", "strength_settings_patterns#locked-ag");
         optgroup->append_single_option_line("infill_lock_depth", "strength_settings_patterns#locked-zag");
         optgroup->append_single_option_line("skin_infill_depth", "strength_settings_patterns#locked-zag");
         optgroup->append_single_option_line("skin_infill_line_width", "strength_settings_patterns#locked-zag");
