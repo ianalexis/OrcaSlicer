@@ -27,7 +27,7 @@ The Flow Ratio determines how much filament is extruded and plays a crucial role
 
 ### OrcaSlicer > 2.3.0 Archimedean chords + YOLO (Recommended)
 
-This method uses [Archimedean Chords](strength_settings_patterns#archimedean-schords) for flow rate calibration with the YOLO (Recommended) approach.
+This method uses [Archimedean Chords](strength_settings_patterns#archimedean-chords) for flow rate calibration with the YOLO (Recommended) approach.
 
 1. Select the printer and filament you want to calibrate.
    This method is based on your current filament's flow ratio, so ensure you select the correct one before proceeding.
