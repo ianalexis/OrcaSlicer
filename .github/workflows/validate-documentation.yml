@@ -86,6 +86,18 @@ jobs:
                           $destRaw = $linkMatch.Groups[1].Value.Trim()
                           if ($destRaw -match '^(?:https?:|mailto:|data:|#|\\)') { continue }
                           
+                          # Check for double ## before splitting
+                          if ($destRaw.Contains('##')) {
+                              $brokenReferences += @{
+                                  SourceFile = $relPath
+                                  Line = $i + 1
+                                  Target = $destRaw
+                                  Issue = "Use single # for fragments."
+                                  Type = "Link"
+                              }
+                              continue
+                          }
+                          
                           $destParts = $destRaw -split '#', 2
                           $destNoFragment = $destParts[0]
                           $fragment = if ($destParts.Length -gt 1) { $destParts[1] } else { $null }
@@ -128,6 +140,19 @@ jobs:
                   $lineNumber++
                   foreach ($match in [regex]::Matches($line, $regex)) {
                       $arg2Full = $match.Groups[3].Value.Trim()
+                      
+                      # Check for double ## before splitting
+                      if ($arg2Full.Contains('##')) {
+                          $brokenReferences += @{
+                              SourceFile = "Tab.cpp"
+                              Line = $lineNumber
+                              Target = $arg2Full
+                              Issue = "Use single # for fragments."
+                              Type = "Link"
+                          }
+                          continue
+                      }
+                      
                       $arg2Parts = $arg2Full -split '#', 2
                       $arg2Core = $arg2Parts[0].Trim()
                       $fragment = if ($arg2Parts.Length -gt 1) { $arg2Parts[1].Trim() } else { $null }
@@ -145,16 +170,7 @@ jobs:
               foreach ($ref in $tabReferences) {
                   $docExists = $docIndex.ContainsKey($ref.DocBase)
                   
-                  # Check if fragment contains ## (double hash - not allowed)
-                  if ($ref.Fragment -and $ref.Fragment.Contains('##')) {
-                      $brokenReferences += @{
-                          SourceFile = $ref.SourceFile
-                          Line = $ref.Line
-                          Target = "$($ref.DocBase)#$($ref.Fragment)"
-                          Issue = "Use single # for fragments."
-                          Type = "Link"
-                      }
-                  } elseif (-not $docExists) {
+                  if (-not $docExists) {
                       $brokenReferences += @{
                           SourceFile = $ref.SourceFile
                           Line = $ref.Line
@@ -191,16 +207,7 @@ jobs:
               foreach ($link in $doc.Links) {
                   $targetExists = $docIndex.ContainsKey($link.TargetBase)
                   
-                  # Check if fragment contains ## (double hash - not allowed)
-                  if ($link.Fragment -and $link.Fragment.Contains('##')) {
-                      $brokenReferences += @{
-                          SourceFile = $link.SourceFile
-                          Line = $link.Line
-                          Target = "$($link.TargetBase).md#$($link.Fragment)"
-                          Issue = "Double ## reference is not allowed. Use single # for fragments."
-                          Type = "Link"
-                      }
-                  } elseif (-not $targetExists) {
+                  if (-not $targetExists) {
                       $brokenReferences += @{
                           SourceFile = $link.SourceFile
                           Line = $link.Line
