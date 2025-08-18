@@ -135,12 +135,13 @@ jobs:
                               $targetBase = $leaf.ToLower().EndsWith('.md') ? $leaf.Substring(0, $leaf.Length - 3) : $leaf
                               $targetBase = $targetBase.Trim()
                               if ($targetBase) {
-                                  $links += @{
+                                  $linkInfo = @{
                                       TargetBase = $targetBase
                                       Fragment = $fragment
                                       Line = $i + 1
                                       SourceFile = $relPath
                                   }
+                                  $links += $linkInfo
                               }
                           }
                       }
