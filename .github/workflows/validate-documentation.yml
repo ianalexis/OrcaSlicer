@@ -53,20 +53,6 @@ jobs:
               return $null
           }
           
-          function Parse-CodeFenceAwareContent($lines, $processor) {
-              $inCodeFence = $false
-              for ($i = 0; $i -lt $lines.Count; $i++) {
-                  if ($lines[$i].TrimStart() -match '^(```|~~~)') { 
-                      $inCodeFence = -not $inCodeFence
-                      continue 
-                  }
-                  if (-not $inCodeFence) {
-                      $lineForParsing = [regex]::Replace($lines[$i], '`[^`]*`', '')
-                      & $processor $lineForParsing $i
-                  }
-              }
-          }
-          
           # Initialize
           $tabFile = Join-Path $PWD "src/slic3r/GUI/Tab.cpp"
           $docDir = Join-Path $PWD 'doc'
@@ -98,8 +84,16 @@ jobs:
               
               # Parse links
               $links = @()
-              Parse-CodeFenceAwareContent $lines {
-                  param($lineForParsing, $i)
+              $inCodeFence = $false
+              for ($i = 0; $i -lt $lines.Count; $i++) {
+                  $line = $lines[$i]
+                  if ($line.TrimStart() -match '^(```|~~~)') { 
+                      $inCodeFence = -not $inCodeFence
+                      continue 
+                  }
+                  if ($inCodeFence) { continue }
+                  
+                  $lineForParsing = [regex]::Replace($line, '`[^`]*`', '')
                   foreach ($linkMatch in [regex]::Matches($lineForParsing, '(?<!!)[^\]]*\]\(([^)]+)\)')) {
                       $destRaw = $linkMatch.Groups[1].Value.Trim()
                       
@@ -112,16 +106,16 @@ jobs:
                               $validationResult = Validate-Fragment $fragment $anchors $relPath ($i + 1) $destRaw "Link"
                               if ($validationResult) { $brokenReferences += $validationResult }
                           }
-                          return
+                          continue
                       }
                       
                       # Skip external URLs
-                      if ($destRaw -match '^(?:https?:|mailto:|data:|#|\\)') { return }
+                      if ($destRaw -match '^(?:https?:|mailto:|data:|#|\\)') { continue }
                       
                       # Check for double ##
                       if ($destRaw.Contains('##')) {
                           $brokenReferences += Add-BrokenReference $relPath ($i + 1) $destRaw "Use single # for fragments." "Link"
-                          return
+                          continue
                       }
                       
                       # Parse file and fragment
@@ -199,8 +193,16 @@ jobs:
               $lines = Get-Content $file.FullName -Encoding UTF8
               $relPath = (Resolve-Path $file.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
               
-              Parse-CodeFenceAwareContent $lines {
-                  param($lineForParsing, $lineNumber)
+              $inCodeFence = $false
+              for ($lineNumber = 0; $lineNumber -lt $lines.Count; $lineNumber++) {
+                  $line = $lines[$lineNumber]
+                  if ($line.TrimStart() -match '^(```|~~~)') { 
+                      $inCodeFence = -not $inCodeFence
+                      continue 
+                  }
+                  if ($inCodeFence) { continue }
+                  
+                  $lineForParsing = [regex]::Replace($line, '`[^`]*`', '')
                   
                   # Process markdown and HTML images
                   $imagePatterns = @(
