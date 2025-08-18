@@ -28,445 +28,266 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         shell: pwsh
         run: |
-          $FolderPath = $PWD
-          $RelativeTabPath = "src/slic3r/GUI/Tab.cpp"
-          
-          $tabFile = Join-Path $FolderPath $RelativeTabPath
-          $docDir  = Join-Path $FolderPath 'doc'
-          
-          Write-Host "Validating documentation..." -ForegroundColor Blue
-          
-          # Check required paths
-          if (-not (Test-Path $tabFile)) { 
-              Write-Host "::warning::Tab.cpp file not found at: $tabFile"
-              $hasTabFile = $false
-          } else {
-              $hasTabFile = $true
+          # Helper Functions
+          function Normalize-Fragment($fragment) {
+              return $fragment.ToLower().Trim() -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
           }
           
-          if (-not (Test-Path $docDir)) { 
-              Write-Host "::error::doc folder does not exist at: $docDir"
-              exit 1 
+          function Add-BrokenReference($sourceFile, $line, $target, $issue, $type) {
+              return @{
+                  SourceFile = $sourceFile
+                  Line = $line
+                  Target = $target
+                  Issue = $issue
+                  Type = $type
+              }
           }
           
-          # === Build documentation index ===
-          $docIndex = @{}
-          $brokenReferences = @()
-          $mdFiles = Get-ChildItem -Path $docDir -Filter *.md -Recurse -File -ErrorAction SilentlyContinue
+          function Validate-Fragment($fragment, $availableAnchors, $sourceFile, $line, $target, $type) {
+              $cleanFragment = $fragment.StartsWith('#') ? $fragment.Substring(1) : $fragment
+              $normalizedFragment = Normalize-Fragment $cleanFragment
+              
+              if ($availableAnchors -notcontains $normalizedFragment) {
+                  return Add-BrokenReference $sourceFile $line $target "Fragment does not exist" $type
+              }
+              return $null
+          }
           
-          if ($mdFiles) {
-              foreach ($mdFile in $mdFiles) {
-                  $baseName = [System.IO.Path]::GetFileNameWithoutExtension($mdFile.Name)
-                  $relPath = (Resolve-Path $mdFile.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
-                  $content = Get-Content -Path $mdFile.FullName -Encoding UTF8 -Raw
-                  $lines = Get-Content -Path $mdFile.FullName -Encoding UTF8
-                  
-                  $anchors = @()
-                  # Extract HTML anchors (name/id attributes)
-                  $anchorMatches = [regex]::Matches($content, '(?i)<a\s+[^>]*(?:name|id)\s*=\s*[`"'']([^`"'']+)[`"''][^>]*>')
-                  foreach ($match in $anchorMatches) {
-                      $anchors += $match.Groups[1].Value.ToLower()
+          function Parse-CodeFenceAwareContent($lines, $processor) {
+              $inCodeFence = $false
+              for ($i = 0; $i -lt $lines.Count; $i++) {
+                  if ($lines[$i].TrimStart() -match '^(```|~~~)') { 
+                      $inCodeFence = -not $inCodeFence
+                      continue 
                   }
-                  
-                  # Extract Markdown headers as anchors (# ## ### etc.)
-                  $headerMatches = [regex]::Matches($content, '(?m)^#+\s+(.+)$')
-                  foreach ($match in $headerMatches) {
-                      $headerText = $match.Groups[1].Value.Trim()
-                      # GitHub-style normalization: lowercase, remove special chars, spaces to hyphens (preserving multiple spaces as multiple hyphens)
-                      $anchor = $headerText.ToLower() -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
-                      $anchors += $anchor
-                  }
-                  
-                  # Parse markdown links
-                  $links = @()
-                  $linkRegex = '(?<!!)[^\]]*\]\(([^)]+)\)'
-                  # Track fenced code blocks to skip link examples inside them
-                  $inCodeFence = $false
-                  for ($i = 0; $i -lt $lines.Count; $i++) {
-                      $line = $lines[$i]
-                      if ($line.TrimStart() -match '^(```|~~~)') { $inCodeFence = -not $inCodeFence; continue }
-                      if ($inCodeFence) { continue }
-                      # Remove inline code spans to avoid parsing `[text](url)` inside backticks
-                      $lineForParsing = [regex]::Replace($line, '`[^`]*`', '')
-                      foreach ($linkMatch in [regex]::Matches($lineForParsing, $linkRegex)) {
-                          $destRaw = $linkMatch.Groups[1].Value.Trim()
-                          # Validate internal redirection like [text](#subtitle)
-                          if ($destRaw.StartsWith('#')) {
-                              $fragment = $destRaw.Substring(1)
-                              # If there is more than one #, report as error
-                              if ($fragment.Contains('#')) {
-                                  $brokenReferences += @{
-                                      SourceFile = $relPath
-                                      Line = $i + 1
-                                      Target = $destRaw
-                                      Issue = "Internal link must use only one #."
-                                      Type = "Link"
-                                  }
-                                  continue
-                              }
-                              # GitHub-style normalization for fragment: lowercase, remove special chars, spaces to hyphens (preserving multiple spaces as multiple hyphens)
-                              $normalizedFragment = $fragment.ToLower().Trim() -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
-                              $availableAnchors = $anchors
-                              if ($availableAnchors -notcontains $normalizedFragment) {
-                                  $brokenReferences += @{
-                                      SourceFile = $relPath
-                                      Line = $i + 1
-                                      Target = $destRaw
-                                      Issue = "Internal fragment does not exist in this file."
-                                      Type = "Link"
-                                  }
-                              }
-                              continue
-                          }
-                          if ($destRaw -match '^(?:https?:|mailto:|data:|#|\\)') { continue }
-                          
-                          # Check for double ## before splitting
-                          if ($destRaw.Contains('##')) {
-                              $brokenReferences += @{
-                                  SourceFile = $relPath
-                                  Line = $i + 1
-                                  Target = $destRaw
-                                  Issue = "Use single # for fragments."
-                                  Type = "Link"
-                              }
-                              continue
-                          }
-                          
-                          $destParts = $destRaw -split '#', 2
-                          $destNoFragment = $destParts[0]
-                          $fragment = if ($destParts.Length -gt 1) { $destParts[1] } else { $null }
-                          
-                          if (-not $destNoFragment) { continue }
-                          
-                          $leaf = ($destNoFragment -split '[\\/]')[-1]
-                          if (-not $leaf) { continue }
-                          
-                          $targetBase = if ($leaf.ToLower().EndsWith('.md')) { $leaf.Substring(0, $leaf.Length - 3) } else { $leaf }
-                          $targetBase = $targetBase.Trim()
-                          if (-not $targetBase) { continue }
-                          
-                          $links += @{
-                              TargetBase = $targetBase
-                              Fragment = $fragment
-                              Line = $i + 1
-                              SourceFile = $relPath
-                          }
-                      }
-                  }
-                  
-                  $docIndex[$baseName] = @{
-                      Anchors = $anchors
-                      Links = $links
+                  if (-not $inCodeFence) {
+                      $lineForParsing = [regex]::Replace($lines[$i], '`[^`]*`', '')
+                      & $processor $lineForParsing $i
                   }
               }
           }
           
-          # === Parse Tab.cpp references ===
+          # Initialize
+          $tabFile = Join-Path $PWD "src/slic3r/GUI/Tab.cpp"
+          $docDir = Join-Path $PWD 'doc'
+          $brokenReferences = @()
+          $docIndex = @{}
+          
+          Write-Host "Validating documentation..." -ForegroundColor Blue
+          
+          # Validate paths
+          $hasTabFile = Test-Path $tabFile
+          if (-not $hasTabFile) { Write-Host "::warning::Tab.cpp file not found at: $tabFile" }
+          if (-not (Test-Path $docDir)) { Write-Host "::error::doc folder does not exist"; exit 1 }
+          
+          # Build documentation index
+          $mdFiles = Get-ChildItem -Path $docDir -Filter *.md -Recurse -File -ErrorAction SilentlyContinue
+          
+          foreach ($mdFile in $mdFiles) {
+              $baseName = [System.IO.Path]::GetFileNameWithoutExtension($mdFile.Name)
+              $relPath = (Resolve-Path $mdFile.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
+              $content = Get-Content -Path $mdFile.FullName -Encoding UTF8 -Raw
+              $lines = Get-Content -Path $mdFile.FullName -Encoding UTF8
+              
+              # Extract anchors
+              $anchors = @()
+              $anchors += [regex]::Matches($content, '(?i)<a\s+[^>]*(?:name|id)\s*=\s*[`"'']([^`"'']+)[`"'']') | 
+                  ForEach-Object { $_.Groups[1].Value.ToLower() }
+              $anchors += [regex]::Matches($content, '(?m)^#+\s+(.+)$') | 
+                  ForEach-Object { Normalize-Fragment $_.Groups[1].Value.Trim() }
+              
+              # Parse links
+              $links = @()
+              Parse-CodeFenceAwareContent $lines {
+                  param($lineForParsing, $i)
+                  foreach ($linkMatch in [regex]::Matches($lineForParsing, '(?<!!)[^\]]*\]\(([^)]+)\)')) {
+                      $destRaw = $linkMatch.Groups[1].Value.Trim()
+                      
+                      # Handle internal fragments
+                      if ($destRaw.StartsWith('#')) {
+                          $fragment = $destRaw.Substring(1)
+                          if ($fragment.Contains('#')) {
+                              $brokenReferences += Add-BrokenReference $relPath ($i + 1) $destRaw "Internal link must use only one #." "Link"
+                          } else {
+                              $validationResult = Validate-Fragment $fragment $anchors $relPath ($i + 1) $destRaw "Link"
+                              if ($validationResult) { $brokenReferences += $validationResult }
+                          }
+                          return
+                      }
+                      
+                      # Skip external URLs
+                      if ($destRaw -match '^(?:https?:|mailto:|data:|#|\\)') { return }
+                      
+                      # Check for double ##
+                      if ($destRaw.Contains('##')) {
+                          $brokenReferences += Add-BrokenReference $relPath ($i + 1) $destRaw "Use single # for fragments." "Link"
+                          return
+                      }
+                      
+                      # Parse file and fragment
+                      $destParts = $destRaw -split '#', 2
+                      $destNoFragment = $destParts[0]
+                      $fragment = ($destParts.Length -gt 1) ? $destParts[1] : $null
+                      
+                      if ($destNoFragment) {
+                          $leaf = ($destNoFragment -split '[\\/]')[-1]
+                          if ($leaf) {
+                              $targetBase = $leaf.ToLower().EndsWith('.md') ? $leaf.Substring(0, $leaf.Length - 3) : $leaf
+                              $targetBase = $targetBase.Trim()
+                              if ($targetBase) {
+                                  $links += @{
+                                      TargetBase = $targetBase
+                                      Fragment = $fragment
+                                      Line = $i + 1
+                                      SourceFile = $relPath
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+              
+              $docIndex[$baseName] = @{ Anchors = $anchors; Links = $links }
+          }
+          
+          # Parse Tab.cpp references
           if ($hasTabFile) {
               $regex = 'optgroup->append_single_option_line\s*\(\s*(?:"([^"]+)"|([^,]+?))\s*,\s*"([^"]+)"\s*\)'
               $lines = Get-Content -Path $tabFile -Encoding UTF8
-              $tabReferences = @()
-              $lineNumber = 0
               
-              foreach ($line in $lines) {
-                  $lineNumber++
-                  foreach ($match in [regex]::Matches($line, $regex)) {
+              for ($i = 0; $i -lt $lines.Count; $i++) {
+                  foreach ($match in [regex]::Matches($lines[$i], $regex)) {
                       $arg2Full = $match.Groups[3].Value.Trim()
                       
-                      # Check for double ## before splitting
                       if ($arg2Full.Contains('##')) {
-                          $brokenReferences += @{
-                              SourceFile = "Tab.cpp"
-                              Line = $lineNumber
-                              Target = $arg2Full
-                              Issue = "Use single # for fragments."
-                              Type = "Link"
-                          }
+                          $brokenReferences += Add-BrokenReference "Tab.cpp" ($i + 1) $arg2Full "Use single # for fragments." "Link"
                           continue
                       }
                       
                       $arg2Parts = $arg2Full -split '#', 2
-                      $arg2Core = $arg2Parts[0].Trim()
-                      $fragment = if ($arg2Parts.Length -gt 1) { $arg2Parts[1].Trim() } else { $null }
+                      $docBase = $arg2Parts[0].Trim()
+                      $fragment = ($arg2Parts.Length -gt 1) ? $arg2Parts[1].Trim() : $null
                       
-                      $tabReferences += @{
-                          DocBase = $arg2Core
-                          Fragment = $fragment
-                          Line = $lineNumber
-                          SourceFile = "Tab.cpp"
-                      }
-                  }
-              }
-              
-              # Check Tab.cpp references
-              foreach ($ref in $tabReferences) {
-                  $docExists = $docIndex.ContainsKey($ref.DocBase)
-                  
-                  if (-not $docExists) {
-                      $brokenReferences += @{
-                          SourceFile = $ref.SourceFile
-                          Line = $ref.Line
-                          Target = "$($ref.DocBase)"
-                          Issue = "File does not exist"
-                          Type = "Link"
-                      }
-                  } elseif ($ref.Fragment) {
-                      # Remove leading # if present (but allow the search to work)
-                      $cleanFragment = $ref.Fragment
-                      if ($cleanFragment.StartsWith('#')) {
-                          $cleanFragment = $cleanFragment.Substring(1)
-                      }
-                      
-                      $normalizedFragment = $cleanFragment.ToLower().Trim()
-                      $normalizedFragment = $normalizedFragment -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
-                      $availableAnchors = $docIndex[$ref.DocBase].Anchors
-                      if ($availableAnchors -notcontains $normalizedFragment) {
-                          $brokenReferences += @{
-                              SourceFile = $ref.SourceFile
-                              Line = $ref.Line
-                              Target = "$($ref.DocBase)#$($ref.Fragment)"
-                              Issue = "Fragment does not exist"
-                              Type = "Link"
-                          }
+                      if (-not $docIndex.ContainsKey($docBase)) {
+                          $brokenReferences += Add-BrokenReference "Tab.cpp" ($i + 1) $docBase "File does not exist" "Link"
+                      } elseif ($fragment) {
+                          $validationResult = Validate-Fragment $fragment $docIndex[$docBase].Anchors "Tab.cpp" ($i + 1) "$docBase#$fragment" "Link"
+                          if ($validationResult) { $brokenReferences += $validationResult }
                       }
                   }
               }
           }
           
-          # Check markdown links
+          # Validate markdown links
           foreach ($baseName in $docIndex.Keys) {
-              $doc = $docIndex[$baseName]
-              
-              foreach ($link in $doc.Links) {
-                  $targetExists = $docIndex.ContainsKey($link.TargetBase)
-                  
-                  if (-not $targetExists) {
-                      $brokenReferences += @{
-                          SourceFile = $link.SourceFile
-                          Line = $link.Line
-                          Target = "$($link.TargetBase).md"
-                          Issue = "File does not exist"
-                          Type = "Link"
-                      }
+              foreach ($link in $docIndex[$baseName].Links) {
+                  if (-not $docIndex.ContainsKey($link.TargetBase)) {
+                      $brokenReferences += Add-BrokenReference $link.SourceFile $link.Line "$($link.TargetBase).md" "File does not exist" "Link"
                   } elseif ($link.Fragment) {
-                      # Remove leading # if present (but allow the search to work)
-                      $cleanFragment = $link.Fragment
-                      if ($cleanFragment.StartsWith('#')) {
-                          $cleanFragment = $cleanFragment.Substring(1)
-                      }
-                      
-                      $normalizedFragment = $cleanFragment.ToLower().Trim()
-                      $normalizedFragment = $normalizedFragment -replace '[^a-z0-9\s-]', '' -replace ' ', '-' -replace '^-+|-+$', ''
-                      $availableAnchors = $docIndex[$link.TargetBase].Anchors
-                      if ($availableAnchors -notcontains $normalizedFragment) {
-                          $brokenReferences += @{
-                              SourceFile = $link.SourceFile
-                              Line = $link.Line
-                              Target = "$($link.TargetBase)#$($link.Fragment)"
-                              Issue = "Fragment does not exist"
-                              Type = "Link"
-                          }
-                      }
-                  }
-              }
-          }
-          
-          # === Validate images ===
-          Write-Host "Validating images..." -ForegroundColor Blue
-          
-          $imageReferences = @()
-          
-          foreach ($file in $mdFiles) {
-              $lines = Get-Content $file.FullName -Encoding UTF8
-              $relPath = (Resolve-Path $file.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
-              
-              # Track fenced code blocks so we don't parse examples inside them as real images
-              $inCodeFence = $false
-              for ($lineNumber = 0; $lineNumber -lt $lines.Count; $lineNumber++) {
-                  $line = $lines[$lineNumber]
-                  # Detect start/end of fenced code blocks (``` or ~~~). Toggle state and skip the fence line itself.
-                  if ($line.TrimStart() -match '^(```|~~~)') {
-                      $inCodeFence = -not $inCodeFence
-                      continue
-                  }
-                  if ($inCodeFence) { continue }
-                  
-                  # Remove inline code spans delimited by backticks to avoid false positives like `![alt](url)` examples
-                  $lineForParsing = [regex]::Replace($line, '`[^`]*`', '')
-                  
-                  # Parse markdown images: ![alt](url)
-                  foreach ($match in [regex]::Matches($lineForParsing, "!\[([^\]]*)\]\(([^)]+)\)")) {
-                      $altText = $match.Groups[1].Value
-                      $url = $match.Groups[2].Value
-                      
-                      if (-not $altText.Trim()) {
-                          # Report missing alt text
-                          $brokenReferences += @{
-                              SourceFile = $relPath
-                              Line = $lineNumber + 1
-                              Issue = "[Markdown] Missing alt text for image"
-                              Target = $match.Value
-                              Type = "Image"
-                          }
-                      } else {
-                          $imageReferences += @{
-                              SourceFile = $relPath
-                              Line = $lineNumber + 1
-                              AltText = $altText
-                              Url = $url
-                              FullMatch = $match.Value
-                              ImageType = "Markdown"
-                          }
-                      }
-                  }
-                  
-                  # Parse HTML images: <img ...>
-                  foreach ($match in [regex]::Matches($lineForParsing, '<img\s+[^>]*>')) {
-                      $imgTag = $match.Value
-                      $altText = ""
-                      $src = ""
-                      
-                      # Extract alt and src from HTML (more flexible matching)
-                      if ($imgTag -match 'alt\s*=\s*[`"'']([^`"'']*)[`"'']') { $altText = $matches[1] }
-                      if ($imgTag -match 'src\s*=\s*[`"'']([^`"'']*)[`"'']') { $src = $matches[1] }
-                      
-                      # Only add if both src and alt are present
-                      if ($src -and $altText) {
-                          $imageReferences += @{
-                              SourceFile = $relPath
-                              Line = $lineNumber + 1
-                              AltText = $altText
-                              Url = $src
-                              FullMatch = $match.Value
-                              ImageType = "HTML"
-                          }
-                      } elseif ($src -and -not $altText) {
-                          # Report missing alt text
-                          $brokenReferences += @{
-                              SourceFile = $relPath
-                              Line = $lineNumber + 1
-                              Issue = "[HTML] Missing alt attribute for image"
-                              Target = $match.Value
-                              Type = "Image"
-                          }
-                      }
+                      $validationResult = Validate-Fragment $link.Fragment $docIndex[$link.TargetBase].Anchors $link.SourceFile $link.Line "$($link.TargetBase)#$($link.Fragment)" "Link"
+                      if ($validationResult) { $brokenReferences += $validationResult }
                   }
               }
           }
           
           # Validate images
+          Write-Host "Validating images..." -ForegroundColor Blue
           $expectedUrlPattern = '^https://github\.com/SoftFever/OrcaSlicer/blob/main/([^?]+)\?raw=true$'
           
-          foreach ($imgRef in $imageReferences) {
-              # Check URL format
-              if ($imgRef.Url -match $expectedUrlPattern) {
-                  $relativePathInUrl = $matches[1]
-                  $fileNameFromUrl = [System.IO.Path]::GetFileNameWithoutExtension($relativePathInUrl)
+          foreach ($file in $mdFiles) {
+              $lines = Get-Content $file.FullName -Encoding UTF8
+              $relPath = (Resolve-Path $file.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
+              
+              Parse-CodeFenceAwareContent $lines {
+                  param($lineForParsing, $lineNumber)
                   
-                  # Check if alt text matches filename
-                  if ($imgRef.AltText -ne $fileNameFromUrl) {
-                      $brokenReferences += @{
-                          SourceFile = $imgRef.SourceFile
-                          Line = $imgRef.Line
-                          Issue = "[$($imgRef.ImageType)] Alt text `"$($imgRef.AltText)`" ≠ filename `"$fileNameFromUrl`""
-                          Target = $imgRef.FullMatch
-                          Type = "Image"
+                  # Process markdown and HTML images
+                  $imagePatterns = @(
+                      @{ Pattern = "!\[([^\]]*)\]\(([^)]+)\)"; Type = "Markdown"; AltGroup = 1; UrlGroup = 2 }
+                      @{ Pattern = '<img\s+[^>]*>'; Type = "HTML"; AltGroup = -1; UrlGroup = -1 }
+                  )
+                  
+                  foreach ($pattern in $imagePatterns) {
+                      foreach ($match in [regex]::Matches($lineForParsing, $pattern.Pattern)) {
+                          $altText = ""
+                          $url = ""
+                          
+                          if ($pattern.Type -eq "Markdown") {
+                              $altText = $match.Groups[$pattern.AltGroup].Value
+                              $url = $match.Groups[$pattern.UrlGroup].Value
+                          } else {
+                              # Extract from HTML
+                              $imgTag = $match.Value
+                              if ($imgTag -match 'alt\s*=\s*[`"'']([^`"'']*)[`"'']') { $altText = $matches[1] }
+                              if ($imgTag -match 'src\s*=\s*[`"'']([^`"'']*)[`"'']') { $url = $matches[1] }
+                          }
+                          
+                          if (-not $altText.Trim() -and $url) {
+                              $brokenReferences += Add-BrokenReference $relPath ($lineNumber + 1) $match.Value "[$($pattern.Type)] Missing alt text for image" "Image"
+                          } elseif ($url -and $altText) {
+                              # Validate URL format and file existence
+                              if ($url -match $expectedUrlPattern) {
+                                  $relativePathInUrl = $matches[1]
+                                  $fileNameFromUrl = [System.IO.Path]::GetFileNameWithoutExtension($relativePathInUrl)
+                                  
+                                  if ($altText -ne $fileNameFromUrl) {
+                                      $brokenReferences += Add-BrokenReference $relPath ($lineNumber + 1) $match.Value "[$($pattern.Type)] Alt text `"$altText`" ≠ filename `"$fileNameFromUrl`"" "Image"
+                                  }
+                                  
+                                  $expectedImagePath = Join-Path $PWD ($relativePathInUrl -replace "/", "\")
+                                  if (-not (Test-Path $expectedImagePath)) {
+                                      $brokenReferences += Add-BrokenReference $relPath ($lineNumber + 1) $match.Value "[$($pattern.Type)] Image not found at path: $relativePathInUrl" "Image"
+                                  }
+                              } else {
+                                  $urlIssues = @()
+                                  if (-not $url.StartsWith('https://github.com/SoftFever/OrcaSlicer/blob/main/')) { $urlIssues += "URL must start with expected prefix" }
+                                  if (-not $url.EndsWith('?raw=true')) { $urlIssues += "URL must end with '?raw=true'" }
+                                  if ($url -match '^https?://(?!github\.com/SoftFever/OrcaSlicer)') { $urlIssues += "External URLs not allowed" }
+                                  
+                                  $issueText = "[$($pattern.Type)] URL format issues: " + ($urlIssues -join '; ')
+                                  $brokenReferences += Add-BrokenReference $relPath ($lineNumber + 1) $match.Value $issueText "Image"
+                              }
+                          }
                       }
-                  }
-                  
-                  # Check if image file exists at expected path
-                  $expectedImagePath = Join-Path $FolderPath ($relativePathInUrl -replace "/", "\")
-                  if (-not (Test-Path $expectedImagePath)) {
-                      $brokenReferences += @{
-                          SourceFile = $imgRef.SourceFile
-                          Line = $imgRef.Line
-                          Issue = "[$($imgRef.ImageType)] Image not found at path: $relativePathInUrl"
-                          Target = $imgRef.FullMatch
-                          Type = "Image"
-                      }
-                  }
-                  
-              } else {
-                  # Provide more specific error messages for URL format issues
-                  $urlIssues = @()
-                  
-                  if (-not $imgRef.Url.StartsWith('https://github.com/SoftFever/OrcaSlicer/blob/main/')) {
-                      $urlIssues += "URL must start with 'https://github.com/SoftFever/OrcaSlicer/blob/main/'"
-                  }
-                  
-                  if (-not $imgRef.Url.EndsWith('?raw=true')) {
-                      $urlIssues += "URL must end with '?raw=true'"
-                  }
-                  
-                  if ($imgRef.Url -match '^https?://(?!github\.com/SoftFever/OrcaSlicer)') {
-                      $urlIssues += "External URLs are not allowed."
-                  }
-                  
-                  $issueText = if ($urlIssues.Count -gt 0) { 
-                      "[$($imgRef.ImageType)] URL format issues: " + ($urlIssues -join '; ')
-                  } else { 
-                      "[$($imgRef.ImageType)] URL format does not match expected pattern: https://github.com/SoftFever/OrcaSlicer/blob/main/path/to/image?raw=true" 
-                  }
-                  
-                  $brokenReferences += @{
-                      SourceFile = $imgRef.SourceFile
-                      Line = $imgRef.Line
-                      Issue = $issueText
-                      Target = $imgRef.FullMatch
-                      Type = "Image"
                   }
               }
           }
           
-          # === Report results ===
+          # Report results
           $linkErrors = $brokenReferences | Where-Object { $_.Type -eq "Link" }
           $imageErrors = $brokenReferences | Where-Object { $_.Type -eq "Image" }
           
           if ($brokenReferences.Count -gt 0) {
               Write-Host "::error::Found $($brokenReferences.Count) validation errors ($($linkErrors.Count) link errors, $($imageErrors.Count) image errors)"
               
-              # Build error summary for PR comment
+              # Build error summary
               $errorSummary = ""
               
-              if ($linkErrors.Count -gt 0) {
-                  Write-Host "::group::🔗 Link Validation Errors"
-                  $errorSummary += "## 🔗 Link Validation Errors ($($linkErrors.Count))`n`n"
-                  $groupedByFile = $linkErrors | Group-Object SourceFile
-                  foreach ($group in ($groupedByFile | Sort-Object Name)) {
-                      Write-Host "📄 $($group.Name):" -ForegroundColor Yellow
-                      $errorSummary += "**📄 $($group.Name):**`n"
-                      foreach ($ref in ($group.Group | Sort-Object Line)) {
-                          Write-Host "::error file=$($ref.SourceFile),line=$($ref.Line)::$($ref.Target) - $($ref.Issue)"
-                          $errorSummary += "- Line $($ref.Line): ``$($ref.Target)`` - $($ref.Issue)`n"
+              @(@{ Errors = $linkErrors; Title = "🔗 Link Validation Errors"; Prefix = "" }, 
+                @{ Errors = $imageErrors; Title = "�️ Image Validation Errors"; Prefix = "doc/" }) | ForEach-Object {
+                  if ($_.Errors.Count -gt 0) {
+                      Write-Host "::group::$($_.Title)"
+                      $errorSummary += "## $($_.Title) ($($_.Errors.Count))`n`n"
+                      
+                      $_.Errors | Group-Object SourceFile | Sort-Object Name | ForEach-Object {
+                          Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
+                          $errorSummary += "**📄 $($_.Prefix)$($_.Name):**`n"
+                          
+                          $_.Group | Sort-Object Line | ForEach-Object {
+                              Write-Host "::error file=$($_.Prefix)$($_.SourceFile),line=$($_.Line)::$($_.Target) - $($_.Issue)"
+                              $errorSummary += "- Line $($_.Line): ``$($_.Target)`` - $($_.Issue)`n"
+                          }
+                          $errorSummary += "`n"
                       }
-                      $errorSummary += "`n"
+                      Write-Host "::endgroup::"
                   }
-                  Write-Host "::endgroup::"
               }
               
-              if ($imageErrors.Count -gt 0) {
-                  Write-Host "::group::🖼️ Image Validation Errors"
-                  $errorSummary += "## 🖼️ Image Validation Errors ($($imageErrors.Count))`n`n"
-                  $groupedByFile = $imageErrors | Group-Object SourceFile
-                  foreach ($group in ($groupedByFile | Sort-Object Name)) {
-                      Write-Host "📄 $($group.Name):" -ForegroundColor Yellow
-                      $errorSummary += "**📄 doc/$($group.Name):**`n"
-                      foreach ($ref in ($group.Group | Sort-Object Line)) {
-                          Write-Host "::error file=doc/$($ref.SourceFile),line=$($ref.Line)::$($ref.Issue)"
-                          $errorSummary += "- Line $($ref.Line): $($ref.Issue)`n"
-                      }
-                      $errorSummary += "`n"
-                  }
-                  Write-Host "::endgroup::"
-              }
-              
-              # Export error summary for PR comment
-              Add-Content -Path $env:GITHUB_ENV -Value "VALIDATION_ERRORS<<EOF"
-              Add-Content -Path $env:GITHUB_ENV -Value $errorSummary
-              Add-Content -Path $env:GITHUB_ENV -Value "EOF"
-              Add-Content -Path $env:GITHUB_ENV -Value "ERROR_COUNT=$($brokenReferences.Count)"
-              Add-Content -Path $env:GITHUB_ENV -Value "LINK_ERROR_COUNT=$($linkErrors.Count)"
-              Add-Content -Path $env:GITHUB_ENV -Value "IMAGE_ERROR_COUNT=$($imageErrors.Count)"
+              # Export for PR comment
+              @("VALIDATION_ERRORS<<EOF", $errorSummary, "EOF", 
+                "ERROR_COUNT=$($brokenReferences.Count)", 
+                "LINK_ERROR_COUNT=$($linkErrors.Count)", 
+                "IMAGE_ERROR_COUNT=$($imageErrors.Count)") | Add-Content -Path $env:GITHUB_ENV
               
               exit 1
           } else {
@@ -479,20 +300,13 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const errorCount = process.env.ERROR_COUNT || '0';
-            const linkErrorCount = process.env.LINK_ERROR_COUNT || '0';
-            const imageErrorCount = process.env.IMAGE_ERROR_COUNT || '0';
-            const validationErrors = process.env.VALIDATION_ERRORS || '';
+            const { ERROR_COUNT = '0', LINK_ERROR_COUNT = '0', IMAGE_ERROR_COUNT = '0', VALIDATION_ERRORS = '' } = process.env;
             
-            let body = `❌ **Documentation validation failed**
+            const body = `❌ **Documentation validation failed**
             
-            Found ${errorCount} validation errors (${linkErrorCount} link errors, ${imageErrorCount} image errors).`;
+            Found ${ERROR_COUNT} validation errors (${LINK_ERROR_COUNT} link errors, ${IMAGE_ERROR_COUNT} image errors).
             
-            if (validationErrors) {
-              body += `\n\n${validationErrors}`;
-            } else {
-              body += `\n\nCheck the workflow logs for details.`;
-            }
+            ${VALIDATION_ERRORS || 'Check the workflow logs for details.'}`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
