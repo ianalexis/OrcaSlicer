@@ -16,7 +16,7 @@ The Flow Ratio determines how much filament is extruded and plays a crucial role
 > ![flowrate-Bambulab-uncheck](https://github.com/SoftFeer/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowrate-Bambulab-uncheck.png?raw=true)
 
 > [!NOTE]
-> After v2.3.0, the [Top Pattern](strength_settings_top_bottom_shells#surface-pattern) changed to [Archimedean chords](strength_settings_patterns#archimedean-chords) from [Monotonic Line](strength_settings_patterns#monotonic-line).
+> After v2.3.0, the [Top Pattern](strength_settings_top_bottom_shells##surface-pattern) changed to [Archimedean chords](strength_settings_patterns#archimedean-chords) from [Monotonic Line](strength_settings_patterns#monotonic-line).
 
 ## Calibration Types
 
