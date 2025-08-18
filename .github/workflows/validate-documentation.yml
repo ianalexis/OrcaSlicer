@@ -257,19 +257,31 @@ jobs:
           }
           
           # Report results
-          $linkErrors = $brokenReferences | Where-Object { $_.Type -eq "Link" }
-          $imageErrors = $brokenReferences | Where-Object { $_.Type -eq "Image" }
+          # Deduplicate broken references (same file, line, target, and type)
+          $uniqueBrokenReferences = @()
+          $seen = @{}
+          foreach ($ref in $brokenReferences) {
+              $key = "$($ref.SourceFile):$($ref.Line):$($ref.Target):$($ref.Type)"
+              if (-not $seen.ContainsKey($key)) {
+                  $seen[$key] = $true
+                  $uniqueBrokenReferences += $ref
+              }
+          }
+          
+          $linkErrors = $uniqueBrokenReferences | Where-Object { $_.Type -eq "Link" }
+          $imageErrors = $uniqueBrokenReferences | Where-Object { $_.Type -eq "Image" }
           $totalErrors = $linkErrors.Count + $imageErrors.Count
           
           # Debug info
-          Write-Host "Debug: brokenReferences.Count = $($brokenReferences.Count)"
+          Write-Host "Debug: Original brokenReferences.Count = $($brokenReferences.Count)"
+          Write-Host "Debug: Unique brokenReferences.Count = $($uniqueBrokenReferences.Count)"
           Write-Host "Debug: linkErrors.Count = $($linkErrors.Count)"
           Write-Host "Debug: imageErrors.Count = $($imageErrors.Count)"
           Write-Host "Debug: totalErrors = $totalErrors"
           
           # Show all broken references for debugging
-          Write-Host "Debug: All broken references:"
-          foreach ($ref in $brokenReferences) {
+          Write-Host "Debug: All unique broken references:"
+          foreach ($ref in $uniqueBrokenReferences) {
               Write-Host "  - File: $($ref.SourceFile), Line: $($ref.Line), Type: $($ref.Type), Target: $($ref.Target), Issue: $($ref.Issue)"
           }
           
