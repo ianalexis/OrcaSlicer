@@ -261,36 +261,34 @@ jobs:
           $imageErrors = $brokenReferences | Where-Object { $_.Type -eq "Image" }
           
           if ($brokenReferences.Count -gt 0) {
-              Write-Host "::error::Found $($brokenReferences.Count) validation errors ($($linkErrors.Count) link errors, $($imageErrors.Count) image errors)"
+              # Simple, direct reporting
+              Write-Host "::error::Found validation errors: $($linkErrors.Count) link errors, $($imageErrors.Count) image errors"
               
-              # Build error summary
-              $errorSummary = ""
-              
-              @(@{ Errors = $linkErrors; Title = "🔗 Link Validation Errors"; Prefix = "" }, 
-                @{ Errors = $imageErrors; Title = "🖼️ Image Validation Errors"; Prefix = "doc/" }) | ForEach-Object {
-                  if ($_.Errors.Count -gt 0) {
-                      Write-Host "::group::$($_.Title)"
-                      $errorSummary += "## $($_.Title) ($($_.Errors.Count))`n`n"
-                      
-                      $_.Errors | Group-Object SourceFile | Sort-Object Name | ForEach-Object {
-                          Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
-                          $errorSummary += "**📄 $($_.Prefix)$($_.Name):**`n"
-                          
-                          $_.Group | Sort-Object Line | ForEach-Object {
-                              Write-Host "::error file=$($_.Prefix)$($_.SourceFile),line=$($_.Line)::$($_.Target) - $($_.Issue)"
-                              $errorSummary += "- Line $($_.Line): ``$($_.Target)`` - $($_.Issue)`n"
-                          }
-                          $errorSummary += "`n"
+              # Report link errors
+              if ($linkErrors.Count -gt 0) {
+                  Write-Host "::group::🔗 Link Validation Errors"
+                  $linkErrors | Group-Object SourceFile | ForEach-Object {
+                      Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
+                      $_.Group | Sort-Object Line | ForEach-Object {
+                          Write-Host "  Line $($_.Line): $($_.Target) - $($_.Issue)" -ForegroundColor Red
+                          Write-Host "::error file=doc/$($_.SourceFile),line=$($_.Line)::$($_.Target) - $($_.Issue)"
                       }
-                      Write-Host "::endgroup::"
                   }
+                  Write-Host "::endgroup::"
               }
               
-              # Export for PR comment
-              @("VALIDATION_ERRORS<<EOF", $errorSummary, "EOF", 
-                "ERROR_COUNT=$($brokenReferences.Count)", 
-                "LINK_ERROR_COUNT=$($linkErrors.Count)", 
-                "IMAGE_ERROR_COUNT=$($imageErrors.Count)") | Add-Content -Path $env:GITHUB_ENV
+              # Report image errors
+              if ($imageErrors.Count -gt 0) {
+                  Write-Host "::group::🖼️ Image Validation Errors"
+                  $imageErrors | Group-Object SourceFile | ForEach-Object {
+                      Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
+                      $_.Group | Sort-Object Line | ForEach-Object {
+                          Write-Host "  Line $($_.Line): $($_.Issue)" -ForegroundColor Red
+                          Write-Host "::error file=doc/$($_.SourceFile),line=$($_.Line)::$($_.Issue)"
+                      }
+                  }
+                  Write-Host "::endgroup::"
+              }
               
               exit 1
           } else {
@@ -303,17 +301,11 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const { ERROR_COUNT = '0', LINK_ERROR_COUNT = '0', IMAGE_ERROR_COUNT = '0', VALIDATION_ERRORS = '' } = process.env;
-            
-            const body = `❌ **Documentation validation failed**
-            
-            Found ${ERROR_COUNT} validation errors (${LINK_ERROR_COUNT} link errors, ${IMAGE_ERROR_COUNT} image errors).
-            
-            ${VALIDATION_ERRORS || 'Check the workflow logs for details.'}`;
-            
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              body: `❌ **Documentation validation failed**
+              
+              Please check the workflow logs for details about the validation errors.`
             })
