@@ -84,15 +84,57 @@ jobs:
                   for ($i = 0; $i -lt $lines.Count; $i++) {
                       foreach ($linkMatch in [regex]::Matches($lines[$i], $linkRegex)) {
                           $destRaw = $linkMatch.Groups[1].Value.Trim()
-                          if ($destRaw -match '^(?:https?:|mailto:|data:|#|\\)') { continue }
                           
-                          # Check for double ## before splitting
+                          # Skip external links but handle internal fragments
+                          if ($destRaw -match '^(?:https?:|mailto:|data:|\\)') { continue }
+                          
+                          # Handle internal fragment links (starting with #)
+                          if ($destRaw.StartsWith('#')) {
+                              # Check for double ## in internal links
+                              if ($destRaw.Contains('##')) {
+                                  $brokenReferences += @{
+                                      SourceFile = $relPath
+                                      Line = $i + 1
+                                      Target = $destRaw
+                                      Issue = "Double ## reference is not allowed. Use single # for fragments."
+                                      Type = "Link"
+                                  }
+                                  continue
+                              }
+                              
+                              # Extract fragment (remove leading #)
+                              $fragment = $destRaw.Substring(1).Trim()
+                              if ($fragment) {
+                                  # Normalize fragment for comparison (more flexible matching)
+                                  $normalizedFragment = $fragment.ToLower().Trim()
+                                  # Handle escaped characters in links
+                                  $normalizedFragment = $normalizedFragment -replace '\\(.)', '$1'
+                                  
+                                  # Try exact match first
+                                  if ($anchors -notcontains $normalizedFragment) {
+                                      # Try fuzzy matching by removing extra dashes and normalizing
+                                      $fuzzyFragment = $normalizedFragment -replace '--+', '-'
+                                      if ($anchors -notcontains $fuzzyFragment) {
+                                          $brokenReferences += @{
+                                              SourceFile = $relPath
+                                              Line = $i + 1
+                                              Target = $destRaw
+                                              Issue = "Internal fragment does not exist in this file"
+                                              Type = "Link"
+                                          }
+                                      }
+                                  }
+                              }
+                              continue
+                          }
+                          
+                          # Check for double ## before splitting (for external links)
                           if ($destRaw.Contains('##')) {
                               $brokenReferences += @{
                                   SourceFile = $relPath
                                   Line = $i + 1
                                   Target = $destRaw
-                                  Issue = "Use single # for fragments."
+                                  Issue = "Double ## reference is not allowed. Use single # for fragments."
                                   Type = "Link"
                               }
                               continue
