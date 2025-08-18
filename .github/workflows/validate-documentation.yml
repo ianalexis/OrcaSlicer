@@ -72,8 +72,8 @@ jobs:
                   $headerMatches = [regex]::Matches($content, '(?m)^#+\s+(.+)$')
                   foreach ($match in $headerMatches) {
                       $headerText = $match.Groups[1].Value.Trim()
-                      # Unified normalization: lowercase, replace spaces with dashes, remove all non-alphanumeric except dash
-                      $anchor = $headerText.ToLower() -replace '[^a-z0-9\s-]', '' -replace '\s+', '-'
+                      # VSCode/GitHub anchor normalization: replace '>' and '<' with '--', then lowercase, replace spaces with dashes, remove all non-alphanumeric except dash
+                      $anchor = $headerText.ToLower() -replace '[><]', '--' -replace '[^a-z0-9\s-]', '' -replace '\s+', '-'
                       $anchors += $anchor
                   }
                   
@@ -97,8 +97,8 @@ jobs:
                                   }
                                   continue
                               }
-                              # Unified normalization for fragment: lowercase, replace spaces with dashes, remove all non-alphanumeric except dash
-                              $normalizedFragment = $fragment.ToLower().Trim() -replace '[^a-z0-9\s-]', '' -replace '\s+', '-'
+                              # VSCode/GitHub anchor normalization for fragment: replace '>' and '<' with '--', then lowercase, replace spaces with dashes, remove all non-alphanumeric except dash
+                              $normalizedFragment = $fragment.ToLower().Trim() -replace '[><]', '--' -replace '[^a-z0-9\s-]', '' -replace '\s+', '-'
                               $availableAnchors = $anchors
                               if ($availableAnchors -notcontains $normalizedFragment) {
                                   $brokenReferences += @{
