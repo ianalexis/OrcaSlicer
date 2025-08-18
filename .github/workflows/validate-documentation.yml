@@ -59,17 +59,6 @@ jobs:
                   $relPath = (Resolve-Path $mdFile.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
                   $content = Get-Content -Path $mdFile.FullName -Encoding UTF8 -Raw
                   $lines = Get-Content -Path $mdFile.FullName -Encoding UTF8
-                  
-                  # Extract anchors
-                  $anchors = @()
-                  $headerMatches = [regex]::Matches($content, '(?m)^(#+)\s+(.+)$')
-                  foreach ($match in $headerMatches) {
-                      $headerText = $match.Groups[2].Value.Trim()
-                      $headerAnchor = $headerText.ToLower() -replace '\s+', '-' -replace '[^\w\-]', ''
-                      $anchors += $headerAnchor
-                      $anchors += $headerText.ToLower().Trim()
-                  }
-                  
                   $anchorMatches = [regex]::Matches($content, '(?i)<a\s+[^>]*(?:name|id)\s*=\s*[`"'']([^`"'']+)[`"''][^>]*>')
                   foreach ($match in $anchorMatches) {
                       $anchors += $match.Groups[1].Value.ToLower()
@@ -309,29 +298,49 @@ jobs:
           if ($brokenReferences.Count -gt 0) {
               Write-Host "::error::Found $($brokenReferences.Count) validation errors ($($linkErrors.Count) link errors, $($imageErrors.Count) image errors)"
               
+              # Build error summary for PR comment
+              $errorSummary = ""
+              
               if ($linkErrors.Count -gt 0) {
                   Write-Host "::group::🔗 Link Validation Errors"
+                  $errorSummary += "`n## 🔗 Link Validation Errors ($($linkErrors.Count))`n`n"
                   $groupedByFile = $linkErrors | Group-Object SourceFile
                   foreach ($group in ($groupedByFile | Sort-Object Name)) {
                       Write-Host "📄 $($group.Name):" -ForegroundColor Yellow
+                      $errorSummary += "**📄 $($group.Name):**`n"
                       foreach ($ref in ($group.Group | Sort-Object Line)) {
                           Write-Host "::error file=$($ref.SourceFile),line=$($ref.Line)::$($ref.Target) - $($ref.Issue)"
+                          $errorSummary += "- Line $($ref.Line): ``$($ref.Target)`` - $($ref.Issue)`n"
                       }
+                      $errorSummary += "`n"
                   }
                   Write-Host "::endgroup::"
               }
               
               if ($imageErrors.Count -gt 0) {
                   Write-Host "::group::🖼️ Image Validation Errors"
+                  $errorSummary += "`n## 🖼️ Image Validation Errors ($($imageErrors.Count))`n`n"
                   $groupedByFile = $imageErrors | Group-Object SourceFile
                   foreach ($group in ($groupedByFile | Sort-Object Name)) {
                       Write-Host "📄 $($group.Name):" -ForegroundColor Yellow
+                      $errorSummary += "**📄 doc/$($group.Name):**`n"
                       foreach ($ref in ($group.Group | Sort-Object Line)) {
                           Write-Host "::error file=doc/$($ref.SourceFile),line=$($ref.Line)::$($ref.Issue)"
+                          $errorSummary += "- Line $($ref.Line): $($ref.Issue)`n"
                       }
+                      $errorSummary += "`n"
                   }
                   Write-Host "::endgroup::"
               }
+              
+              # Export error summary for PR comment
+              $errorSummary = $errorSummary.Replace("`n", "\n").Replace("`"", "\`"")
+              Add-Content -Path $env:GITHUB_ENV -Value "VALIDATION_ERRORS<<EOF"
+              Add-Content -Path $env:GITHUB_ENV -Value $errorSummary
+              Add-Content -Path $env:GITHUB_ENV -Value "EOF"
+              Add-Content -Path $env:GITHUB_ENV -Value "ERROR_COUNT=$($brokenReferences.Count)"
+              Add-Content -Path $env:GITHUB_ENV -Value "LINK_ERROR_COUNT=$($linkErrors.Count)"
+              Add-Content -Path $env:GITHUB_ENV -Value "IMAGE_ERROR_COUNT=$($imageErrors.Count)"
               
               exit 1
           } else {
@@ -344,13 +353,26 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const errorCount = process.env.ERROR_COUNT || '0';
+            const linkErrorCount = process.env.LINK_ERROR_COUNT || '0';
+            const imageErrorCount = process.env.IMAGE_ERROR_COUNT || '0';
+            const validationErrors = process.env.VALIDATION_ERRORS || '';
+            
+            let body = `❌ **Documentation validation failed**
+            
+            Found ${errorCount} validation errors (${linkErrorCount} link errors, ${imageErrorCount} image errors).`;
+            
+            if (validationErrors) {
+              body += `\n\n## Details\n${validationErrors}`;
+            } else {
+              body += `\n\nCheck the workflow logs for details.`;
+            }
+            
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ **Documentation validation failed**
-              
-              Found issues with documentation. Check the workflow logs for details.`
+              body: body
             })
       
       - name: Success comment
