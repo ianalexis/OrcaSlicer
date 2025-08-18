@@ -61,7 +61,7 @@ jobs:
                   $content = Get-Content -Path $mdFile.FullName -Encoding UTF8 -Raw
                   $lines = Get-Content -Path $mdFile.FullName -Encoding UTF8
                   
-                  # Initialize anchors array for this file
+                  $anchors = @()
                   # Extract HTML anchors (name/id attributes)
                   $anchorMatches = [regex]::Matches($content, '(?i)<a\s+[^>]*(?:name|id)\s*=\s*[`"'']([^`"'']+)[`"''][^>]*>')
                   foreach ($match in $anchorMatches) {
