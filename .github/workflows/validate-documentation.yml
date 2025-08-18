@@ -59,9 +59,23 @@ jobs:
                   $relPath = (Resolve-Path $mdFile.FullName).Path.Substring($docDir.Length).TrimStart('\', '/')
                   $content = Get-Content -Path $mdFile.FullName -Encoding UTF8 -Raw
                   $lines = Get-Content -Path $mdFile.FullName -Encoding UTF8
+                  
+                  # Initialize anchors array for this file
+                  $anchors = @()
+                  
+                  # Extract HTML anchors (name/id attributes)
                   $anchorMatches = [regex]::Matches($content, '(?i)<a\s+[^>]*(?:name|id)\s*=\s*[`"'']([^`"'']+)[`"''][^>]*>')
                   foreach ($match in $anchorMatches) {
                       $anchors += $match.Groups[1].Value.ToLower()
+                  }
+                  
+                  # Extract Markdown headers as anchors (# ## ### etc.)
+                  $headerMatches = [regex]::Matches($content, '(?m)^#+\s+(.+)$')
+                  foreach ($match in $headerMatches) {
+                      $headerText = $match.Groups[1].Value.Trim()
+                      # Convert header text to anchor format (lowercase, replace spaces with dashes, remove special chars)
+                      $anchor = $headerText.ToLower() -replace '[^\w\s-]', '' -replace '\s+', '-'
+                      $anchors += $anchor
                   }
                   
                   # Parse markdown links
@@ -131,12 +145,13 @@ jobs:
               foreach ($ref in $tabReferences) {
                   $docExists = $docIndex.ContainsKey($ref.DocBase)
                   
-                  if ($ref.Fragment -and $ref.Fragment.StartsWith('#')) {
+                  # Check if fragment starts with ## (double hash - not allowed)
+                  if ($ref.Fragment -and $ref.Fragment.StartsWith('##')) {
                       $brokenReferences += @{
                           SourceFile = $ref.SourceFile
                           Line = $ref.Line
                           Target = "$($ref.DocBase)#$($ref.Fragment)"
-                          Issue = "Double ## reference is not allowed"
+                          Issue = "Double ## reference is not allowed. Use single # for fragments."
                           Type = "Link"
                       }
                   } elseif (-not $docExists) {
@@ -148,14 +163,20 @@ jobs:
                           Type = "Link"
                       }
                   } elseif ($ref.Fragment) {
-                      $normalizedFragment = $ref.Fragment.ToLower().Trim()
+                      # Remove leading # if present (but allow the search to work)
+                      $cleanFragment = $ref.Fragment
+                      if ($cleanFragment.StartsWith('#')) {
+                          $cleanFragment = $cleanFragment.Substring(1)
+                      }
+                      
+                      $normalizedFragment = $cleanFragment.ToLower().Trim()
                       $availableAnchors = $docIndex[$ref.DocBase].Anchors
                       if ($availableAnchors -notcontains $normalizedFragment) {
                           $brokenReferences += @{
                               SourceFile = $ref.SourceFile
                               Line = $ref.Line
                               Target = "$($ref.DocBase)#$($ref.Fragment)"
-                              Issue = "Fragment does not exist"
+                              Issue = "Fragment does not exist. Available anchors: $($availableAnchors -join ', ')"
                               Type = "Link"
                           }
                       }
@@ -170,12 +191,13 @@ jobs:
               foreach ($link in $doc.Links) {
                   $targetExists = $docIndex.ContainsKey($link.TargetBase)
                   
-                  if ($link.Fragment -and $link.Fragment.StartsWith('#')) {
+                  # Check if fragment starts with ## (double hash - not allowed)
+                  if ($link.Fragment -and $link.Fragment.StartsWith('##')) {
                       $brokenReferences += @{
                           SourceFile = $link.SourceFile
                           Line = $link.Line
                           Target = "$($link.TargetBase).md#$($link.Fragment)"
-                          Issue = "Double ## reference is not allowed"
+                          Issue = "Double ## reference is not allowed. Use single # for fragments."
                           Type = "Link"
                       }
                   } elseif (-not $targetExists) {
@@ -187,14 +209,20 @@ jobs:
                           Type = "Link"
                       }
                   } elseif ($link.Fragment) {
-                      $normalizedFragment = $link.Fragment.ToLower().Trim()
+                      # Remove leading # if present (but allow the search to work)
+                      $cleanFragment = $link.Fragment
+                      if ($cleanFragment.StartsWith('#')) {
+                          $cleanFragment = $cleanFragment.Substring(1)
+                      }
+                      
+                      $normalizedFragment = $cleanFragment.ToLower().Trim()
                       $availableAnchors = $docIndex[$link.TargetBase].Anchors
                       if ($availableAnchors -notcontains $normalizedFragment) {
                           $brokenReferences += @{
                               SourceFile = $link.SourceFile
                               Line = $link.Line
                               Target = "$($link.TargetBase)#$($link.Fragment)"
-                              Issue = "Fragment does not exist"
+                              Issue = "Fragment does not exist. Available anchors: $($availableAnchors -join ', ')"
                               Type = "Link"
                           }
                       }
@@ -216,33 +244,59 @@ jobs:
                   
                   # Parse markdown images: ![alt](url)
                   foreach ($match in [regex]::Matches($line, "!\[([^\]]*)\]\(([^)]+)\)")) {
-                      $imageReferences += @{
-                          SourceFile = $relPath
-                          Line = $lineNumber + 1
-                          AltText = $match.Groups[1].Value
-                          Url = $match.Groups[2].Value
-                          FullMatch = $match.Value
-                          ImageType = "Markdown"
+                      $altText = $match.Groups[1].Value
+                      $url = $match.Groups[2].Value
+                      
+                      if (-not $altText.Trim()) {
+                          # Report missing alt text
+                          $brokenReferences += @{
+                              SourceFile = $relPath
+                              Line = $lineNumber + 1
+                              Issue = "[Markdown] Missing alt text for image"
+                              Target = $match.Value
+                              Type = "Image"
+                          }
+                      } else {
+                          $imageReferences += @{
+                              SourceFile = $relPath
+                              Line = $lineNumber + 1
+                              AltText = $altText
+                              Url = $url
+                              FullMatch = $match.Value
+                              ImageType = "Markdown"
+                          }
                       }
                   }
                   
                   # Parse HTML images: <img ...>
-                  foreach ($match in [regex]::Matches($line, '<img\s+((src="[^\"]*"\s+alt="[^\"]*")|(alt="[^\"]*"\s+src="[^\"]*"))[^>]*>')) {
+                  foreach ($match in [regex]::Matches($line, '<img\s+[^>]*>')) {
                       $imgTag = $match.Value
                       $altText = ""
                       $src = ""
                       
-                      # Extract alt and src from HTML
-                      if ($imgTag -match 'alt="([^"]*)"') { $altText = $matches[1] }
-                      if ($imgTag -match 'src="([^"]*)"') { $src = $matches[1] }
+                      # Extract alt and src from HTML (more flexible matching)
+                      if ($imgTag -match 'alt\s*=\s*[`"'']([^`"'']*)[`"'']') { $altText = $matches[1] }
+                      if ($imgTag -match 'src\s*=\s*[`"'']([^`"'']*)[`"'']') { $src = $matches[1] }
                       
-                      $imageReferences += @{
-                          SourceFile = $relPath
-                          Line = $lineNumber + 1
-                          AltText = $altText
-                          Url = $src
-                          FullMatch = $match.Value
-                          ImageType = "HTML"
+                      # Only add if both src and alt are present
+                      if ($src -and $altText) {
+                          $imageReferences += @{
+                              SourceFile = $relPath
+                              Line = $lineNumber + 1
+                              AltText = $altText
+                              Url = $src
+                              FullMatch = $match.Value
+                              ImageType = "HTML"
+                          }
+                      } elseif ($src -and -not $altText) {
+                          # Report missing alt text
+                          $brokenReferences += @{
+                              SourceFile = $relPath
+                              Line = $lineNumber + 1
+                              Issue = "[HTML] Missing alt attribute for image"
+                              Target = $match.Value
+                              Type = "Image"
+                          }
                       }
                   }
               }
@@ -281,10 +335,31 @@ jobs:
                   }
                   
               } else {
+                  # Provide more specific error messages for URL format issues
+                  $urlIssues = @()
+                  
+                  if (-not $imgRef.Url.StartsWith('https://github.com/SoftFever/OrcaSlicer/blob/main/')) {
+                      $urlIssues += "URL must start with 'https://github.com/SoftFever/OrcaSlicer/blob/main/'"
+                  }
+                  
+                  if (-not $imgRef.Url.EndsWith('?raw=true')) {
+                      $urlIssues += "URL must end with '?raw=true'"
+                  }
+                  
+                  if ($imgRef.Url -match '^https?://(?!github\.com/SoftFever/OrcaSlicer)') {
+                      $urlIssues += "External URLs are not allowed, use GitHub raw URLs only"
+                  }
+                  
+                  $issueText = if ($urlIssues.Count -gt 0) { 
+                      "[$($imgRef.ImageType)] URL format issues: " + ($urlIssues -join '; ')
+                  } else { 
+                      "[$($imgRef.ImageType)] URL format does not match expected pattern: https://github.com/SoftFever/OrcaSlicer/blob/main/path/to/image?raw=true" 
+                  }
+                  
                   $brokenReferences += @{
                       SourceFile = $imgRef.SourceFile
                       Line = $imgRef.Line
-                      Issue = "[$($imgRef.ImageType)] URL format does not match expected pattern"
+                      Issue = $issueText
                       Target = $imgRef.FullMatch
                       Type = "Image"
                   }
