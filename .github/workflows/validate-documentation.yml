@@ -261,11 +261,10 @@ jobs:
           $imageErrors = $brokenReferences | Where-Object { $_.Type -eq "Image" }
           
           if ($brokenReferences.Count -gt 0) {
-              # Simple, direct reporting
-              Write-Host "::error::Found validation errors: $($linkErrors.Count) link errors, $($imageErrors.Count) image errors"
+              Write-Host "::error::Documentation validation failed"
               
               # Report link errors
-              if ($linkErrors.Count -gt 0) {
+              if ($linkErrors) {
                   Write-Host "::group::🔗 Link Validation Errors"
                   $linkErrors | Group-Object SourceFile | ForEach-Object {
                       Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
@@ -278,7 +277,7 @@ jobs:
               }
               
               # Report image errors
-              if ($imageErrors.Count -gt 0) {
+              if ($imageErrors) {
                   Write-Host "::group::🖼️ Image Validation Errors"
                   $imageErrors | Group-Object SourceFile | ForEach-Object {
                       Write-Host "📄 $($_.Name):" -ForegroundColor Yellow
