@@ -13,7 +13,7 @@ The Flow Ratio determines how much filament is extruded and plays a crucial role
 
 > [!WARNING]
 > **BambuLab Printers:** Make sure you do **not** select the 'Flow calibration' option.
-> ![flowrate-Bambulab-uncheck](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowrate-Bambulab-uncheck.png?raw=true)
+> ![flowrate-Bambulab-uncheck](https://github.com/SoftFeer/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowrate-Bambulab-uncheck.png?raw=true)
 
 > [!NOTE]
 > After v2.3.0, the [Top Pattern](strength_settings_top_bottom_shells#surface-pattern) changed to [Archimedean chords](strength_settings_patterns#archimedean-chords) from [Monotonic Line](strength_settings_patterns#monotonic-line).
@@ -33,7 +33,7 @@ This method uses [Archimedean Chords](strength_settings_patterns#archimedean-cho
    This method is based on your current filament's flow ratio, so ensure you select the correct one before proceeding.
 2. In the `Calibration` menu, under the `Flow Rate` section, select `YOLO (Recommended)`.
 3. A new project with eleven blocks will be created, each with a different flow rate modifier. Slice and print the project.
-   ![flowcalibration-yolo](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowcalibrtion-yolo.gif?raw=true)
+   ![flowcalibration-yolo](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowcalibration-yolo.gif?raw=true)
 4. Examine the printed blocks and identify the one with the best surface quality. Look for:
    1. The smoothest top surface.
    2. No visible gaps between pattern arcs.
