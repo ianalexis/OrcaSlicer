@@ -176,7 +176,7 @@ jobs:
                               SourceFile = $ref.SourceFile
                               Line = $ref.Line
                               Target = "$($ref.DocBase)#$($ref.Fragment)"
-                              Issue = "Fragment does not exist. Available anchors: $($availableAnchors -join ', ')"
+                              Issue = "Fragment does not exist"
                               Type = "Link"
                           }
                       }
@@ -222,7 +222,7 @@ jobs:
                               SourceFile = $link.SourceFile
                               Line = $link.Line
                               Target = "$($link.TargetBase)#$($link.Fragment)"
-                              Issue = "Fragment does not exist. Available anchors: $($availableAnchors -join ', ')"
+                              Issue = "Fragment does not exist"
                               Type = "Link"
                           }
                       }
@@ -378,7 +378,7 @@ jobs:
               
               if ($linkErrors.Count -gt 0) {
                   Write-Host "::group::🔗 Link Validation Errors"
-                  $errorSummary += "`n## 🔗 Link Validation Errors ($($linkErrors.Count))`n`n"
+                  $errorSummary += "## 🔗 Link Validation Errors ($($linkErrors.Count))`n`n"
                   $groupedByFile = $linkErrors | Group-Object SourceFile
                   foreach ($group in ($groupedByFile | Sort-Object Name)) {
                       Write-Host "📄 $($group.Name):" -ForegroundColor Yellow
@@ -394,7 +394,7 @@ jobs:
               
               if ($imageErrors.Count -gt 0) {
                   Write-Host "::group::🖼️ Image Validation Errors"
-                  $errorSummary += "`n## 🖼️ Image Validation Errors ($($imageErrors.Count))`n`n"
+                  $errorSummary += "## 🖼️ Image Validation Errors ($($imageErrors.Count))`n`n"
                   $groupedByFile = $imageErrors | Group-Object SourceFile
                   foreach ($group in ($groupedByFile | Sort-Object Name)) {
                       Write-Host "📄 $($group.Name):" -ForegroundColor Yellow
@@ -409,7 +409,6 @@ jobs:
               }
               
               # Export error summary for PR comment
-              $errorSummary = $errorSummary.Replace("`n", "\n").Replace("`"", "\`"")
               Add-Content -Path $env:GITHUB_ENV -Value "VALIDATION_ERRORS<<EOF"
               Add-Content -Path $env:GITHUB_ENV -Value $errorSummary
               Add-Content -Path $env:GITHUB_ENV -Value "EOF"
@@ -438,7 +437,7 @@ jobs:
             Found ${errorCount} validation errors (${linkErrorCount} link errors, ${imageErrorCount} image errors).`;
             
             if (validationErrors) {
-              body += `\n\n## Details\n${validationErrors}`;
+              body += `\n\n${validationErrors}`;
             } else {
               body += `\n\nCheck the workflow logs for details.`;
             }
