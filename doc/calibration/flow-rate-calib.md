@@ -33,7 +33,7 @@ This method uses [Archimedean Chords](strength_settings_patterns#archimedean-cho
    This method is based on your current filament's flow ratio, so ensure you select the correct one before proceeding.
 2. In the `Calibration` menu, under the `Flow Rate` section, select `YOLO (Recommended)`.
 3. A new project with eleven blocks will be created, each with a different flow rate modifier. Slice and print the project.
-   ![flowcalibration-yolo](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowcalibration-yolo.gif?raw=true)
+   ![flowcalibration-yolo](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/Flow-Rate/flowcalibrtion-yolo.gif?raw=true)
 4. Examine the printed blocks and identify the one with the best surface quality. Look for:
    1. The smoothest top surface.
    2. No visible gaps between pattern arcs.
