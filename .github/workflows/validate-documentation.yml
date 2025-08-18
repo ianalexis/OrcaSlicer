@@ -51,6 +51,7 @@ jobs:
           
           # === Build documentation index ===
           $docIndex = @{}
+          $brokenReferences = @()
           $mdFiles = Get-ChildItem -Path $docDir -Filter *.md -Recurse -File -ErrorAction SilentlyContinue
           
           if ($mdFiles) {
@@ -126,8 +127,6 @@ jobs:
                   }
               }
           }
-          
-          $brokenReferences = @()
           
           # === Parse Tab.cpp references ===
           if ($hasTabFile) {
