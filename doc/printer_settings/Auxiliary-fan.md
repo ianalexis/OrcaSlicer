@@ -12,7 +12,7 @@ With Klipper you can create macros that translate both the OrcaSlicer numeric fa
 > [!WARNING]
 > Adjust pin names and parameters (power, cycle_time, etc.) to match your hardware.
 
-- [Simple option (indexes only → fan0, fan2, fan3)](#simple-option-indexes-only--fan0-fan2-fan3)
+- [Simple option (indexes only → fan0, fan2, fan3)](#simple-option-indexes-only-s-fan0-fan2-fan3)
 - [Advanced option (Index ⇄ Name mapping)](#advanced-option-index--name-mapping)
   - [Quick customization](#quick-customization)
   - [Usage](#usage)
@@ -59,7 +59,7 @@ gcode:
     {% endif %}
 ```
 
-## Advanced option (Index ⇄ Name mapping)
+## Advanced option (Index  Name mapping)
 
 Lets you use descriptive names like `CPAP`, `EXHAUST`, etc. Useful if you re‑wire or repurpose fans without changing slicer output. Just keep `fan_map` updated.
 
