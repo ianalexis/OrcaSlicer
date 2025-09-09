@@ -28,7 +28,7 @@ The top solid infill area is slightly enlarged to overlap with walls for better 
 A value of 25-30% is a good starting point. The percentage value is relative to the line width of the sparse infill.
 
 > [!TIP]
-> Check [Monotonic Line](strength_settings_patterns#monotonic-line) to learn about its overlaying differences with [Monotonic](strength_settings_patterns#monotonic) and [Rectilinear](strength_settings_patterns#rectilinear).
+> Check [Monotonic Line](strength_settings_spatterns#monotonic-line) to learn about its overlaying differences with [Monotonic](strength_settings_patterns#monotonic) and [Rectilinear](strength_settings_patterns#rectilinear).
 
 ## Surface Pattern
 

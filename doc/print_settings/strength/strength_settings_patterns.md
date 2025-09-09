@@ -11,7 +11,7 @@ As most settings in 3D printing, experience is the best way to determine which p
 
 | | Pattern | Applies to | X-Y Strength | Z Strength | Material Usage | Print Time |
 |---|---|---|---|---|---|---|
-| ![param_monotonic](https://github.com/SoftFever/OrcaSlicer/blob/main/resources/images/param_monotonic.svg?raw=true) | [Monotonic](#monotonic) | - **[Solid Infill](strength_settings_infill#internal-solid-infill)** - **[Surface](strength_settings_top_bottom_shells)** | Normal | Normal | Normal-High | Normal-Low |
+| ![param_monotonic](https://github.com/SoftFever/OrcaSlicer/blob/main/resources/images/param_monotonic.svg?raw=true) | [Monotonic](#mdonotonic) | - **[Solid Infill](strength_settings_infill#internal-solid-infill)** - **[Surface](strength_settings_top_bottom_shells)** | Normal | Normal | Normal-High | Normal-Low |
 | ![param_monotonicline](https://github.com/SoftFever/OrcaSlicer/blob/main/resources/images/param_monotonicline.svg?raw=true) | [Monotonic line](#monotonic-line) | - **[Solid Infill](strength_settings_infill#internal-solid-infill)** - **[Surface](strength_settings_top_bottom_shells)** | Normal | Normal | Normal | Normal |
 | ![param_rectilinear](https://github.com/SoftFever/OrcaSlicer/blob/main/resources/images/param_rectilinear.svg?raw=true) | [Rectilinear](#rectilinear) | - **[Sparse Infill](strength_settings_infill#sparse-infill-density)** - **[Solid Infill](strength_settings_infill#internal-solid-infill)** - **[Surface](strength_settings_top_bottom_shells)** - **[Ironing](quality_settings_ironing)** | Normal-Low | Low | Normal | Normal-Low |
 | ![param_alignedrectilinear](https://github.com/SoftFever/OrcaSlicer/blob/main/resources/images/param_alignedrectilinear.svg?raw=true) | [Aligned Rectilinear](#aligned-rectilinear) | - **[Sparse Infill](strength_settings_infill#sparse-infill-density)** - **[Solid Infill](strength_settings_infill#internal-solid-infill)** - **[Surface](strength_settings_top_bottom_shells)** | Normal-Low | Normal | Normal | Normal-Low |
@@ -57,7 +57,7 @@ As most settings in 3D printing, experience is the best way to determine which p
   - **[Solid Infill](strength_settings_infill#internal-solid-infill)**
   - **[Surface](strength_settings_top_bottom_shells)**
 
-![infill-top-monotonic](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/fill/infill-top-monotonic.png?raw=true)
+![infill-top-monotonic](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/fill/infill-top-monotonic.png)
 
 ## Monotonic line
 
@@ -73,7 +73,7 @@ As most settings in 3D printing, experience is the best way to determine which p
   - **[Solid Infill](strength_settings_infill#internal-solid-infill)**
   - **[Surface](strength_settings_top_bottom_shells)**
 
-![infill-top-monotonic-line](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/fill/infill-top-monotonic-line.png?raw=true)
+[infill-top-monotonic-line](https://github.com/SoftFever/OrcaSlicer/blob/main/doc/images/fill/infill-top-monotonic-line.png?raw=true)
 
 ## Rectilinear
 
