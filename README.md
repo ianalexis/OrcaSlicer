@@ -34,7 +34,7 @@ Several clickbait and malicious websites, such as <b>orca-slicer[.]com</b> and <
 <b>Our only official website is <a href="https://www.orcaslicer.com/">www.orcaslicer.com</a>.</b><br><br>
 If you come across any of these in search results, please <b>report them</b> as unsafe or phishing to help keep the community secure with:<br>
  - <a href="https://safebrowsing.google.com/safebrowsing/report_phish/">Google Safe Browsing</a><br>
- - <a href="https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site">Microsoft Security Intelligence</a><br>
+ - <a href="https://www.microsoft.com/en-us/wdsi/support/report-unsddsafe-site">Microsoft Security Intelligence</a><br>
  - <a href="https://ipthreat.net/tools/reportphishing">IPThreat</a>
 </td>
 </tr>
