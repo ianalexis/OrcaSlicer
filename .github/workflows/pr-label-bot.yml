@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
   issues: write
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     if: github.event_name == 'pull_request_target'
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
       issues: write
     runs-on: ubuntu-latest
     steps:
@@ -27,43 +27,15 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const labelDefinitions = {
-              'bug-fix': { color: 'd73a4a', description: 'Bug fix' },
-              enhancement: { color: 'a2eeef', description: 'Feature enhancement' },
-              Localization: { color: '5319e7', description: 'Localization and translations' },
-              profile: { color: '0e8a16', description: 'Printer/material/profile related' },
-              QoL: { color: 'cfd3d7', description: 'Quality of life improvement' },
-              'UI/UX': { color: '1d76db', description: 'User interface and user experience' },
-              dependencies: { color: '0366d6', description: 'Dependency updates' }
-            };
-
-            async function ensureLabelExists(name, definition) {
-              try {
-                await github.rest.issues.getLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name
-                });
-              } catch (error) {
-                if (error.status === 404) {
-                  await github.rest.issues.createLabel({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    name,
-                    color: definition.color,
-                    description: definition.description
-                  });
-                } else {
-                  throw error;
-                }
-              }
-            }
-
-            for (const [name, definition] of Object.entries(labelDefinitions)) {
-              await ensureLabelExists(name, definition);
-            }
-
-            const allowedLabels = Object.keys(labelDefinitions);
+            const allowedLabels = [
+              'bug-fix',
+              'enhancement',
+              'Localization',
+              'profile',
+              'QoL',
+              'UI/UX',
+              'dependencies'
+            ];
             const pr = context.payload.pull_request;
             const labelsList = allowedLabels.map((label) => `- \`${label}\``).join('\n');
 
@@ -72,18 +44,21 @@ jobs:
               repo: context.repo.repo,
               issue_number: pr.number,
               body:
-                `Hi @${pr.user.login}, please choose one label for this PR.\n\n` +
-                `${labelsList}\n\n` +
-                `Reply with:\n` +
-                `/Label:[name]\n\n` +
-                `Example: /Label:bug-fix`
+                `Hi @${pr.user.login}, you can manage labels for this PR with commands.\n\n` +
+                `Allowed labels are:\n${labelsList}\n\n` +
+                `- \`/LabelBot add:bug-fix\`\n` +
+                `- \`/LabelBot remove:bug-fix\`\n\n` +
+                `Examples:\n` +
+                `/LabelBot add:bug-fix\n` +
+                `/LabelBot add:bug-fix, UI/UX\n` +
+                `/LabelBot remove:bug-fix, UI/UX`
             });
 
   apply-label:
     if: github.event_name == 'issue_comment'
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
       issues: write
     runs-on: ubuntu-latest
     steps:
@@ -91,37 +66,15 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const labelDefinitions = {
-              'bug-fix': { color: 'd73a4a', description: 'Bug fix' },
-              enhancement: { color: 'a2eeef', description: 'Feature enhancement' },
-              Localization: { color: '5319e7', description: 'Localization and translations' },
-              profile: { color: '0e8a16', description: 'Printer/material/profile related' },
-              QoL: { color: 'cfd3d7', description: 'Quality of life improvement' },
-              'UI/UX': { color: '1d76db', description: 'User interface and user experience' },
-              dependencies: { color: '0366d6', description: 'Dependency updates' }
-            };
-
-            async function ensureLabelExists(name, definition) {
-              try {
-                await github.rest.issues.getLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name
-                });
-              } catch (error) {
-                if (error.status === 404) {
-                  await github.rest.issues.createLabel({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    name,
-                    color: definition.color,
-                    description: definition.description
-                  });
-                } else {
-                  throw error;
-                }
-              }
-            }
+            const allowedLabels = [
+              'bug-fix',
+              'enhancement',
+              'Localization',
+              'profile',
+              'QoL',
+              'UI/UX',
+              'dependencies'
+            ];
 
             const issue = context.payload.issue;
             if (!issue.pull_request) {
@@ -130,9 +83,40 @@ jobs:
             }
 
             const body = (context.payload.comment.body || '').trim();
-            const commandMatch = body.match(/^\/label:\s*([^\s]+)\s*$/i);
+            const commandLine = body
+              .split('\n')
+              .map((line) => line.trim())
+              .find((line) => /^\/labelbot\s+(add|remove):/i.test(line));
+
+            if (!commandLine) {
+              core.info('No /LabelBot add:label or /LabelBot remove:label command found.');
+              return;
+            }
+
+            const commandMatch = commandLine.match(/^\/labelbot\s+(add|remove):\s*(.+)\s*$/i);
             if (!commandMatch) {
-              core.info('No /Label:[name] command found.');
+              core.info('Label command format is invalid.');
+              return;
+            }
+
+            const action = commandMatch[1].toLowerCase();
+            let labelsExpr = (commandMatch[2] || '').trim();
+            if (!labelsExpr) {
+              core.info('Label command is missing label name.');
+              return;
+            }
+
+            if (labelsExpr.startsWith('[') && labelsExpr.endsWith(']')) {
+              labelsExpr = labelsExpr.slice(1, -1).trim();
+            }
+
+            const requestedRawLabels = labelsExpr
+              .split(',')
+              .map((part) => part.trim())
+              .filter(Boolean);
+
+            if (!requestedRawLabels.length) {
+              core.info('No labels were provided in the command.');
               return;
             }
 
@@ -148,35 +132,57 @@ jobs:
               return;
             }
 
-            const allowedLabels = Object.keys(labelDefinitions);
-            const allowedByLower = new Map(
+            const labelsByLower = new Map(
               allowedLabels.map((label) => [label.toLowerCase(), label])
             );
-            const requestedRaw = commandMatch[1];
-            const requestedLabel = allowedByLower.get(requestedRaw.toLowerCase());
 
-            if (!requestedLabel) {
+            const resolvedLabels = [];
+            const invalidLabels = [];
+
+            for (const rawLabel of requestedRawLabels) {
+              const resolved = labelsByLower.get(rawLabel.toLowerCase());
+              if (resolved) {
+                resolvedLabels.push(resolved);
+              } else {
+                invalidLabels.push(rawLabel);
+              }
+            }
+
+            if (invalidLabels.length) {
               const allowedText = allowedLabels.map((label) => `\`${label}\``).join(', ');
+              const invalidText = invalidLabels.map((label) => `\`${label}\``).join(', ');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
                 body:
-                  `@${commenter} invalid label \`${requestedRaw}\`.\n\n` +
-                  `Available labels: ${allowedText}\n` +
-                  `Use format: /Label:[name]`
+                  `@${commenter} invalid label(s): ${invalidText}.\n\n` +
+                  `Allowed labels: ${allowedText}\n\n` +
+                  `Use:\n` +
+                  `- \`/LabelBot add:label\`\n` +
+                  `- \`/LabelBot remove:label\`\n` +
+                  `- \`/LabelBot add:label1, label2\``
               });
               return;
             }
 
-            await ensureLabelExists(requestedLabel, labelDefinitions[requestedLabel]);
+            const uniqueRequestedLabels = [...new Set(resolvedLabels)];
 
-            const currentLabels = (issue.labels || [])
-              .map((label) => (typeof label === 'string' ? label : label.name))
-              .filter(Boolean);
+            if (action === 'add') {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: uniqueRequestedLabels
+              });
 
-            for (const label of currentLabels) {
-              if (allowedLabels.includes(label) && label !== requestedLabel) {
+              core.info(`Added labels: ${uniqueRequestedLabels.join(', ')}`);
+              return;
+            }
+
+            let removedCount = 0;
+            try {
+              for (const label of uniqueRequestedLabels) {
                 try {
                   await github.rest.issues.removeLabel({
                     owner: context.repo.owner,
@@ -184,17 +190,20 @@ jobs:
                     issue_number: issue.number,
                     name: label
                   });
+                  removedCount += 1;
                 } catch (error) {
-                  core.warning(`Could not remove label "${label}": ${error.message}`);
+                  if (error.status === 404) {
+                    core.info(`Label is not currently applied: ${label}`);
+                    continue;
+                  }
+
+                  throw error;
                 }
               }
+
+              core.info(`Removed labels count: ${removedCount}`);
+            } catch (error) {
+              throw error;
             }
 
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              labels: [requestedLabel]
-            });
-
-            core.info(`Applied label: ${requestedLabel}`);
+            core.info(`Processed label command: ${action} ${uniqueRequestedLabels.join(', ')}`);
