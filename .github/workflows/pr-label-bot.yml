@@ -1,0 +1,192 @@
+name: PR Label Bot
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  request-label:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask PR author for label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labelDefinitions = {
+              'bug-fix': { color: 'd73a4a', description: 'Bug fix' },
+              enhancement: { color: 'a2eeef', description: 'Feature enhancement' },
+              Localization: { color: '5319e7', description: 'Localization and translations' },
+              profile: { color: '0e8a16', description: 'Printer/material/profile related' },
+              QoL: { color: 'cfd3d7', description: 'Quality of life improvement' },
+              'UI/UX': { color: '1d76db', description: 'User interface and user experience' },
+              dependencies: { color: '0366d6', description: 'Dependency updates' }
+            };
+
+            async function ensureLabelExists(name, definition) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name,
+                    color: definition.color,
+                    description: definition.description
+                  });
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            for (const [name, definition] of Object.entries(labelDefinitions)) {
+              await ensureLabelExists(name, definition);
+            }
+
+            const allowedLabels = Object.keys(labelDefinitions);
+            const pr = context.payload.pull_request;
+            const labelsList = allowedLabels.map((label) => `- \`${label}\``).join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body:
+                `Hi @${pr.user.login}, please choose one label for this PR.\n\n` +
+                `${labelsList}\n\n` +
+                `Reply with:\n` +
+                `/Label:[name]\n\n` +
+                `Example: /Label:bug-fix`
+            });
+
+  apply-label:
+    if: github.event_name == 'issue_comment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply label command from PR author
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labelDefinitions = {
+              'bug-fix': { color: 'd73a4a', description: 'Bug fix' },
+              enhancement: { color: 'a2eeef', description: 'Feature enhancement' },
+              Localization: { color: '5319e7', description: 'Localization and translations' },
+              profile: { color: '0e8a16', description: 'Printer/material/profile related' },
+              QoL: { color: 'cfd3d7', description: 'Quality of life improvement' },
+              'UI/UX': { color: '1d76db', description: 'User interface and user experience' },
+              dependencies: { color: '0366d6', description: 'Dependency updates' }
+            };
+
+            async function ensureLabelExists(name, definition) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name,
+                    color: definition.color,
+                    description: definition.description
+                  });
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            const issue = context.payload.issue;
+            if (!issue.pull_request) {
+              core.info('Ignoring comment that is not on a pull request.');
+              return;
+            }
+
+            const body = (context.payload.comment.body || '').trim();
+            const commandMatch = body.match(/^\/label:\s*([^\s]+)\s*$/i);
+            if (!commandMatch) {
+              core.info('No /Label:[name] command found.');
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: issue.number
+            });
+
+            const commenter = context.payload.comment.user.login;
+            if (commenter !== pr.user.login) {
+              core.info('Ignoring command because commenter is not the PR author.');
+              return;
+            }
+
+            const allowedLabels = Object.keys(labelDefinitions);
+            const allowedByLower = new Map(
+              allowedLabels.map((label) => [label.toLowerCase(), label])
+            );
+            const requestedRaw = commandMatch[1];
+            const requestedLabel = allowedByLower.get(requestedRaw.toLowerCase());
+
+            if (!requestedLabel) {
+              const allowedText = allowedLabels.map((label) => `\`${label}\``).join(', ');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body:
+                  `@${commenter} invalid label \`${requestedRaw}\`.\n\n` +
+                  `Available labels: ${allowedText}\n` +
+                  `Use format: /Label:[name]`
+              });
+              return;
+            }
+
+            await ensureLabelExists(requestedLabel, labelDefinitions[requestedLabel]);
+
+            const currentLabels = (issue.labels || [])
+              .map((label) => (typeof label === 'string' ? label : label.name))
+              .filter(Boolean);
+
+            for (const label of currentLabels) {
+              if (allowedLabels.includes(label) && label !== requestedLabel) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    name: label
+                  });
+                } catch (error) {
+                  core.warning(`Could not remove label "${label}": ${error.message}`);
+                }
+              }
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: [requestedLabel]
+            });
+
+            core.info(`Applied label: ${requestedLabel}`);
