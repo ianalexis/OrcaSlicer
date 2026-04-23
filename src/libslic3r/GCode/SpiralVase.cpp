@@ -7,6 +7,8 @@
 namespace Slic3r {
 
 namespace SpiralVaseHelpers {
+constexpr float TWO_PI = 6.28318530717958647692f;
+
 /** == Smooth Spiral Helpers == */
 /** Distance between a and b */
 float distance(SpiralVase::SpiralPoint a, SpiralVase::SpiralPoint b) { return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2)); }
@@ -112,9 +114,13 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
     std::vector<SpiralVase::SpiralPoint>* previous_layer = m_previous_layer;
 
     bool smooth_spiral = m_smooth_spiral;
+    bool sinusoidal_spiral = m_sinusoidal_spiral && m_sinusoidal_amplitude > 0.f && m_sinusoidal_wavelength > EPSILON;
     std::string new_gcode;
     std::string transition_gcode;
     float max_xy_dist_for_smoothing = m_max_xy_smoothing;
+    float sinusoidal_amplitude = m_sinusoidal_amplitude;
+    float sinusoidal_wavelength = m_sinusoidal_wavelength;
+    float sinusoidal_path_length = m_sinusoidal_path_length;
     //FIXME Tapering of the transition layer only works reliably with relative extruder distances.
     // For absolute extruder distances it will be switched off.
     // Tapering the absolute extruder distances requires to process every extrusion value after the first transition
@@ -126,8 +132,9 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
     float finishing_flowrate = float(m_config.spiral_finishing_flow_ratio.value);
 
     float len = 0.f;
-    SpiralVase::SpiralPoint last_point = previous_layer != NULL && previous_layer->size() >0? previous_layer->at(previous_layer->size()-1): SpiralVase::SpiralPoint(0,0);
-    m_reader.parse_buffer(gcode, [&new_gcode, &z, total_layer_length, layer_height, transition_in, &len, &current_layer, &previous_layer, &transition_gcode, transition_out, smooth_spiral, &max_xy_dist_for_smoothing, &last_point, starting_flowrate, finishing_flowrate]
+    SpiralVase::SpiralPoint last_point = smooth_spiral && previous_layer != NULL && previous_layer->size() > 0 ?
+        previous_layer->at(previous_layer->size() - 1) : SpiralVase::SpiralPoint(m_reader.x(), m_reader.y());
+    m_reader.parse_buffer(gcode, [&new_gcode, &z, total_layer_length, layer_height, transition_in, &len, &current_layer, &previous_layer, &transition_gcode, transition_out, smooth_spiral, &max_xy_dist_for_smoothing, &last_point, starting_flowrate, finishing_flowrate, sinusoidal_spiral, sinusoidal_amplitude, sinusoidal_wavelength, &sinusoidal_path_length]
         (GCodeReader &reader, GCodeReader::GCodeLine line) {
         if (line.cmd_is("G1")) {
             // Orca: Filter out retractions at layer change
@@ -143,7 +150,8 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                 if (line.has_x() || line.has_y()) { // Sometimes lines have X/Y but the move is to the last position
                     if (dist_XY > 0 && line.extruding(reader)) { // Exclude wipe and retract
                         len += dist_XY;
-                        float factor = len / total_layer_length;
+                        sinusoidal_path_length += dist_XY;
+                        float factor = total_layer_length > 0.f ? len / total_layer_length : 0.f;
                         if (transition_in){
                             // Transition layer, interpolate the amount of extrusion starting from spiral_vase_starting_flow_rate to 100%.
                             float starting_e_factor = starting_flowrate + (factor * (1.f - starting_flowrate));
@@ -160,35 +168,56 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                         }
                         // This line is the core of Spiral Vase mode, ramp up the Z smoothly
                         line.set(Z, z + factor * layer_height);
+
+                        SpiralVase::SpiralPoint p(line.new_X(reader), line.new_Y(reader));
+                        SpiralVase::SpiralPoint target = p;
+                        bool                    modify_xy = false;
+
                         if (smooth_spiral) {
                             // Now we also need to try to interpolate X and Y
-                            SpiralVase::SpiralPoint p(line.x(), line.y()); // Get current x/y coordinates
-                            current_layer->push_back(p);       // Store that point for later use on the next layer
                             if (previous_layer != NULL) {
                                 bool        found    = false;
                                 float       dist     = 0;
                                 SpiralVase::SpiralPoint nearestp = SpiralVaseHelpers::nearest_point_on_lines(p, previous_layer, found, dist);
                                 if (found && dist < max_xy_dist_for_smoothing) {
                                     // Interpolate between the point on this layer and the point on the previous layer
-                                    SpiralVase::SpiralPoint target = SpiralVaseHelpers::add(SpiralVaseHelpers::scale(nearestp, 1 - factor), SpiralVaseHelpers::scale(p, factor));
-
-                                    // Remove tiny movement
-                                    // We need to figure out the distance of this new line!
-                                    float modified_dist_XY = SpiralVaseHelpers::distance(last_point, target);
-                                    if (modified_dist_XY < 0.001)
-                                        line.clear();
-                                    else {
-                                        line.set(X, target.x);
-                                        line.set(Y, target.y);
-                                        // Scale the extrusion amount according to change in length
-                                        line.set(E, line.e() * modified_dist_XY / dist_XY, 5 /*decimal_digits*/);
-                                        last_point = target;
-                                    }
-                                } else {
-                                    last_point = p;
+                                    target = SpiralVaseHelpers::add(SpiralVaseHelpers::scale(nearestp, 1 - factor), SpiralVaseHelpers::scale(p, factor));
+                                    modify_xy = true;
                                 }
                             }
                         }
+
+                        if (sinusoidal_spiral) {
+                            SpiralVase::SpiralPoint start(reader.x(), reader.y());
+                            SpiralVase::SpiralPoint segment = SpiralVaseHelpers::subtract(p, start);
+                            float segment_len = SpiralVaseHelpers::distance(p, start);
+                            if (segment_len > EPSILON) {
+                                float phase = SpiralVaseHelpers::TWO_PI * (sinusoidal_path_length / sinusoidal_wavelength);
+                                float offset = sinusoidal_amplitude * float(std::sin(phase));
+                                SpiralVase::SpiralPoint normal(-segment.y / segment_len, segment.x / segment_len);
+                                target = SpiralVaseHelpers::add(target, SpiralVaseHelpers::scale(normal, offset));
+                                modify_xy = true;
+                            }
+                        }
+
+                        if (smooth_spiral)
+                            current_layer->push_back(target); // Store point for interpolation on the next layer.
+
+                        if (modify_xy) {
+                            // Scale extrusion amount according to the modified XY path length.
+                            float modified_dist_XY = SpiralVaseHelpers::distance(last_point, target);
+                            if (modified_dist_XY < 0.001f)
+                                line.clear();
+                            else {
+                                line.set(X, target.x);
+                                line.set(Y, target.y);
+                                line.set(E, line.e() * modified_dist_XY / dist_XY, 5 /*decimal_digits*/);
+                                last_point = target;
+                            }
+                        } else if (smooth_spiral) {
+                            last_point = p;
+                        }
+
                         new_gcode += line.raw() + '\n';
                     }
                     return;
@@ -207,6 +236,8 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
             transition_gcode += line.raw() + '\n';
         }
     });
+
+    m_sinusoidal_path_length = sinusoidal_path_length;
 
     delete m_previous_layer;
     m_previous_layer = current_layer;
