@@ -643,7 +643,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
     toggle_line("spiral_mode_max_xy_smoothing", has_spiral_vase && config->opt_bool("spiral_mode_smooth"));
     toggle_line("spiral_mode_sinusoidal", has_spiral_vase);
     toggle_line("spiral_mode_sinusoidal_amplitude", has_spiral_vase && config->opt_bool("spiral_mode_sinusoidal"));
-    toggle_line("spiral_mode_sinusoidal_wavelength", has_spiral_vase && config->opt_bool("spiral_mode_sinusoidal"));
+    toggle_line("spiral_mode_sinusoidal_waves_per_revolution", has_spiral_vase && config->opt_bool("spiral_mode_sinusoidal"));
     toggle_line("spiral_starting_flow_ratio", has_spiral_vase);
     toggle_line("spiral_finishing_flow_ratio", has_spiral_vase);
     bool has_top_shell    = config->opt_int("top_shell_layers") > 0 || (has_spiral_vase && config->opt_int("bottom_shell_layers") > 1);

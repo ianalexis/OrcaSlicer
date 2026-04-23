@@ -1499,7 +1499,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionFloatOrPercent,     spiral_mode_max_xy_smoothing))
     ((ConfigOptionBool,               spiral_mode_sinusoidal))
     ((ConfigOptionFloat,              spiral_mode_sinusoidal_amplitude))
-    ((ConfigOptionFloat,              spiral_mode_sinusoidal_wavelength))
+    ((ConfigOptionFloat,              spiral_mode_sinusoidal_waves_per_revolution))
     ((ConfigOptionFloat,              spiral_finishing_flow_ratio))
     ((ConfigOptionFloat,              spiral_starting_flow_ratio))
     ((ConfigOptionInt,                standby_temperature_delta))

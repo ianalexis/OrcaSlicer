@@ -2673,7 +2673,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("spiral_mode_max_xy_smoothing", "others_settings_special_mode#max-xy-smoothing");
         optgroup->append_single_option_line("spiral_mode_sinusoidal", "others_settings_special_mode#sinusoidal-deformation");
         optgroup->append_single_option_line("spiral_mode_sinusoidal_amplitude", "others_settings_special_mode#sinusoidal-amplitude");
-        optgroup->append_single_option_line("spiral_mode_sinusoidal_wavelength", "others_settings_special_mode#sinusoidal-wavelength");
+        optgroup->append_single_option_line("spiral_mode_sinusoidal_waves_per_revolution", "others_settings_special_mode#sinusoidal-waves-per-revolution");
         optgroup->append_single_option_line("spiral_starting_flow_ratio", "others_settings_special_mode#spiral-starting-flow-ratio");
         optgroup->append_single_option_line("spiral_finishing_flow_ratio", "others_settings_special_mode#spiral-finishing-flow-ratio");
 

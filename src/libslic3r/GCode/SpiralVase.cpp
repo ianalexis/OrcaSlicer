@@ -8,6 +8,8 @@ namespace Slic3r {
 
 namespace SpiralVaseHelpers {
 constexpr float TWO_PI = 6.28318530717958647692f;
+constexpr float MIN_VERTICES_PER_WAVE = 8.f;
+constexpr float MAX_AMPLITUDE_TO_RADIUS = 0.35f;
 
 /** == Smooth Spiral Helpers == */
 /** Distance between a and b */
@@ -86,16 +88,38 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
     float total_layer_length = 0;
     float layer_height = 0;
     float z = 0.f;
+    float layer_center_x = m_reader.x();
+    float layer_center_y = m_reader.y();
     
     {
         //FIXME Performance warning: This copies the GCodeConfig of the reader.
         GCodeReader r = m_reader;  // clone
         bool set_z = false;
-        r.parse_buffer(gcode, [&total_layer_length, &layer_height, &z, &set_z]
+        bool has_xy_bounds = false;
+        float min_x = 0.f;
+        float max_x = 0.f;
+        float min_y = 0.f;
+        float max_y = 0.f;
+        r.parse_buffer(gcode, [&total_layer_length, &layer_height, &z, &set_z, &has_xy_bounds, &min_x, &max_x, &min_y, &max_y]
             (GCodeReader &reader, const GCodeReader::GCodeLine &line) {
             if (line.cmd_is("G1")) {
                 if (line.extruding(reader)) {
-                    total_layer_length += line.dist_XY(reader);
+                    float dist_xy = line.dist_XY(reader);
+                    total_layer_length += dist_xy;
+                    if (dist_xy > EPSILON) {
+                        float x = line.new_X(reader);
+                        float y = line.new_Y(reader);
+                        if (!has_xy_bounds) {
+                            min_x = max_x = x;
+                            min_y = max_y = y;
+                            has_xy_bounds = true;
+                        } else {
+                            if (x < min_x) min_x = x;
+                            if (x > max_x) max_x = x;
+                            if (y < min_y) min_y = y;
+                            if (y > max_y) max_y = y;
+                        }
+                    }
                 } else if (line.has(Z)) {
                     layer_height += line.dist_Z(reader);
                     if (!set_z) {
@@ -105,6 +129,10 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                 }
             }
         });
+        if (has_xy_bounds) {
+            layer_center_x = 0.5f * (min_x + max_x);
+            layer_center_y = 0.5f * (min_y + max_y);
+        }
     }
 
     // Remove layer height from initial Z.
@@ -114,13 +142,12 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
     std::vector<SpiralVase::SpiralPoint>* previous_layer = m_previous_layer;
 
     bool smooth_spiral = m_smooth_spiral;
-    bool sinusoidal_spiral = m_sinusoidal_spiral && m_sinusoidal_amplitude > 0.f && m_sinusoidal_wavelength > EPSILON;
+    bool sinusoidal_spiral = m_sinusoidal_spiral && m_sinusoidal_amplitude > 0.f && m_sinusoidal_waves_per_revolution > EPSILON;
     std::string new_gcode;
     std::string transition_gcode;
     float max_xy_dist_for_smoothing = m_max_xy_smoothing;
     float sinusoidal_amplitude = m_sinusoidal_amplitude;
-    float sinusoidal_wavelength = m_sinusoidal_wavelength;
-    float sinusoidal_path_length = m_sinusoidal_path_length;
+    float sinusoidal_waves_per_revolution = m_sinusoidal_waves_per_revolution;
     //FIXME Tapering of the transition layer only works reliably with relative extruder distances.
     // For absolute extruder distances it will be switched off.
     // Tapering the absolute extruder distances requires to process every extrusion value after the first transition
@@ -134,7 +161,7 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
     float len = 0.f;
     SpiralVase::SpiralPoint last_point = smooth_spiral && previous_layer != NULL && previous_layer->size() > 0 ?
         previous_layer->at(previous_layer->size() - 1) : SpiralVase::SpiralPoint(m_reader.x(), m_reader.y());
-    m_reader.parse_buffer(gcode, [&new_gcode, &z, total_layer_length, layer_height, transition_in, &len, &current_layer, &previous_layer, &transition_gcode, transition_out, smooth_spiral, &max_xy_dist_for_smoothing, &last_point, starting_flowrate, finishing_flowrate, sinusoidal_spiral, sinusoidal_amplitude, sinusoidal_wavelength, &sinusoidal_path_length]
+    m_reader.parse_buffer(gcode, [&new_gcode, &z, total_layer_length, layer_height, transition_in, &len, &current_layer, &previous_layer, &transition_gcode, transition_out, smooth_spiral, &max_xy_dist_for_smoothing, &last_point, starting_flowrate, finishing_flowrate, sinusoidal_spiral, sinusoidal_amplitude, sinusoidal_waves_per_revolution, layer_center_x, layer_center_y]
         (GCodeReader &reader, GCodeReader::GCodeLine line) {
         if (line.cmd_is("G1")) {
             // Orca: Filter out retractions at layer change
@@ -150,7 +177,6 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                 if (line.has_x() || line.has_y()) { // Sometimes lines have X/Y but the move is to the last position
                     if (dist_XY > 0 && line.extruding(reader)) { // Exclude wipe and retract
                         len += dist_XY;
-                        sinusoidal_path_length += dist_XY;
                         float factor = total_layer_length > 0.f ? len / total_layer_length : 0.f;
                         if (transition_in){
                             // Transition layer, interpolate the amount of extrusion starting from spiral_vase_starting_flow_rate to 100%.
@@ -189,14 +215,50 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
 
                         if (sinusoidal_spiral) {
                             SpiralVase::SpiralPoint start(reader.x(), reader.y());
-                            SpiralVase::SpiralPoint segment = SpiralVaseHelpers::subtract(p, start);
-                            float segment_len = SpiralVaseHelpers::distance(p, start);
-                            if (segment_len > EPSILON) {
-                                float phase = SpiralVaseHelpers::TWO_PI * (sinusoidal_path_length / sinusoidal_wavelength);
-                                float offset = sinusoidal_amplitude * float(std::sin(phase));
-                                SpiralVase::SpiralPoint normal(-segment.y / segment_len, segment.x / segment_len);
-                                target = SpiralVaseHelpers::add(target, SpiralVaseHelpers::scale(normal, offset));
-                                modify_xy = true;
+                            SpiralVase::SpiralPoint center(layer_center_x, layer_center_y);
+                            float start_radius = SpiralVaseHelpers::distance(start, center);
+                            SpiralVase::SpiralPoint from_center = SpiralVaseHelpers::subtract(target, center);
+                            float end_radius = SpiralVaseHelpers::distance(target, center);
+                            float min_radius = start_radius < end_radius ? start_radius : end_radius;
+                            if (min_radius > EPSILON && end_radius > EPSILON) {
+                                float start_theta = float(std::atan2(start.y - center.y, start.x - center.x));
+                                float end_theta = float(std::atan2(from_center.y, from_center.x));
+                                float angular_step = float(std::fabs(std::atan2(std::sin(end_theta - start_theta), std::cos(end_theta - start_theta))));
+
+                                // Attenuate deformation when XY sampling is too sparse or radius is too small.
+                                float waves_denom = sinusoidal_waves_per_revolution * SpiralVaseHelpers::MIN_VERTICES_PER_WAVE;
+                                if (waves_denom < float(EPSILON))
+                                    waves_denom = float(EPSILON);
+                                float max_angular_step = SpiralVaseHelpers::TWO_PI / waves_denom;
+
+                                float sampling_factor = 1.f;
+                                if (max_angular_step > float(EPSILON)) {
+                                    float angular_denom = angular_step;
+                                    if (angular_denom < float(EPSILON))
+                                        angular_denom = float(EPSILON);
+                                    sampling_factor = max_angular_step / angular_denom;
+                                    if (sampling_factor > 1.f)
+                                        sampling_factor = 1.f;
+                                }
+
+                                float amplitude_denom = sinusoidal_amplitude;
+                                if (amplitude_denom < float(EPSILON))
+                                    amplitude_denom = float(EPSILON);
+                                float radius_factor = (SpiralVaseHelpers::MAX_AMPLITUDE_TO_RADIUS * min_radius) / amplitude_denom;
+                                if (radius_factor > 1.f)
+                                    radius_factor = 1.f;
+                                if (radius_factor < 0.f)
+                                    radius_factor = 0.f;
+
+                                float effective_amplitude = sinusoidal_amplitude *
+                                    (sampling_factor < radius_factor ? sampling_factor : radius_factor);
+
+                                if (effective_amplitude > EPSILON) {
+                                    float radial_offset = effective_amplitude * float(std::sin(sinusoidal_waves_per_revolution * end_theta));
+                                    SpiralVase::SpiralPoint radial_dir(from_center.x / end_radius, from_center.y / end_radius);
+                                    target = SpiralVaseHelpers::add(target, SpiralVaseHelpers::scale(radial_dir, radial_offset));
+                                    modify_xy = true;
+                                }
                             }
                         }
 
@@ -236,8 +298,6 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
             transition_gcode += line.raw() + '\n';
         }
     });
-
-    m_sinusoidal_path_length = sinusoidal_path_length;
 
     delete m_previous_layer;
     m_previous_layer = current_layer;

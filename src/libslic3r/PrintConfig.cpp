@@ -5425,14 +5425,14 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.2));
 
-    def = this->add("spiral_mode_sinusoidal_wavelength", coFloat);
-    def->label = L("Sinusoidal wavelength");
-    def->tooltip = L("Distance along the perimeter for one full sinusoidal cycle.");
-    def->sidetext = L("mm");
-    def->min = 0.1;
-    def->max = 1000;
+    def = this->add("spiral_mode_sinusoidal_waves_per_revolution", coFloat);
+    def->label = L("Sinusoidal waves per revolution");
+    def->tooltip = L("Number of sinusoidal waves around one full 360 degree revolution.");
+    def->sidetext = L("count");
+    def->min = 0;
+    def->max = 100;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(10));
+    def->set_default_value(new ConfigOptionFloat(6));
 
     def = this->add("spiral_starting_flow_ratio", coFloat);
     def->label = L("Spiral starting flow ratio");

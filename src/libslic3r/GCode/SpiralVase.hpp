@@ -25,13 +25,11 @@ public:
         m_smooth_spiral = config.spiral_mode_smooth;
         m_sinusoidal_spiral = config.spiral_mode_sinusoidal;
         m_sinusoidal_amplitude = float(config.spiral_mode_sinusoidal_amplitude.value);
-        m_sinusoidal_wavelength = float(config.spiral_mode_sinusoidal_wavelength.value);
+        m_sinusoidal_waves_per_revolution = float(config.spiral_mode_sinusoidal_waves_per_revolution.value);
     };
 
     void 		enable(bool en) {
    		m_transition_layer = en && ! m_enabled;
-		if (en && ! m_enabled)
-			m_sinusoidal_path_length = 0.f;
     	m_enabled 		   = en;
     }
 
@@ -51,8 +49,7 @@ private:
     bool                m_smooth_spiral = false;
     bool                m_sinusoidal_spiral = false;
     float               m_sinusoidal_amplitude = 0.f;
-    float               m_sinusoidal_wavelength = 0.f;
-    float               m_sinusoidal_path_length = 0.f;
+    float               m_sinusoidal_waves_per_revolution = 0.f;
     std::vector<SpiralPoint> * m_previous_layer;
 };
 }
