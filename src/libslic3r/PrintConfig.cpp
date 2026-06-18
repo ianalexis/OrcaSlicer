@@ -2082,7 +2082,24 @@ void PrintConfigDef::init_fff_params()
     def->enum_values   = def_top_fill_pattern->enum_values;
     def->enum_labels   = def_top_fill_pattern->enum_labels;
     def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipMonotonic));
-    
+
+    def           = this->add("internal_solid_infill_gradient", coPercent);
+    def->label    = L("Internal solid infill density gradient");
+    def->category = L("Strength");
+    def->tooltip  = L("Creates a density gradient across the internal solid infill of the top and bottom shells. "
+                      "When set below 100%, the deepest solid layer of a shell is printed at this density and the "
+                      "density ramps up linearly to 100% on the solid layer immediately under the visible top "
+                      "surface (or above the visible bottom surface). This saves material and time in the solid "
+                      "shells while keeping a fully dense layer right beneath the surface.\n"
+                      "The ramp is normalized over the configured top/bottom shell layer count. The visible "
+                      "top/bottom surfaces themselves always stay at 100%. The bottom-most layers controlled by "
+                      "the Elephant foot layers density option keep being handled by that option.");
+    def->sidetext = "%";
+    def->min      = 10;
+    def->max      = 100;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionPercent(100));
+
     def = this->add("outer_wall_line_width", coFloatOrPercent);
     def->label = L("Outer wall");
     def->category = L("Quality");

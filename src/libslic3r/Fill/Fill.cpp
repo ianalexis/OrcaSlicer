@@ -890,7 +890,9 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                         }
                     } else if (surface.is_solid_infill()) {
                         params.pattern = region_config.internal_solid_infill_pattern.value;
-                        params.density = 100.f;
+                        // Orca: per-surface internal solid infill density gradient (0 = unset -> full density).
+                        params.density = surface.solid_infill_gradient_density != 0 ?
+                            float(surface.solid_infill_gradient_density) : 100.f;
                     } else {
                         if (region_config.top_surface_pattern == ipMonotonic || region_config.top_surface_pattern == ipMonotonicLine)
                             params.pattern = ipMonotonic;

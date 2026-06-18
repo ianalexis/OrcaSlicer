@@ -679,6 +679,11 @@ void PrintObject::prepare_infill()
     this->combine_infill();
     m_print->throw_if_canceled();
 
+    // Orca: assign the internal-solid-infill density gradient. Runs last so the per-surface density
+    // bands it produces are not disturbed by any later fill-surface manipulation.
+    this->assign_solid_infill_density_gradient();
+    m_print->throw_if_canceled();
+
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++ region_id) {
         for (const Layer *layer : m_layers) {
@@ -1339,7 +1344,8 @@ bool PrintObject::invalidate_state_by_config_options(
                    || opt_key == "skeleton_infill_density"
                    || opt_key == "skin_infill_density"
                    || opt_key == "infill_lock_depth"
-                   || opt_key == "skin_infill_depth") {
+                   || opt_key == "skin_infill_depth"
+                   || opt_key == "internal_solid_infill_gradient") {
             steps.emplace_back(posPrepareInfill);
         } else if (opt_key == "sparse_infill_density") {
             // One likely wants to reslice only when switching between zero infill to simulate boolean difference (subtracting volumes),
@@ -4159,6 +4165,156 @@ void PrintObject::discover_horizontal_shells()
     }     // for each region
 #endif    /* SLIC3R_DEBUG_SLICE_PROCESSING */
 } // void PrintObject::discover_horizontal_shells()
+
+// Orca: Assign a per-surface infill density to internal solid infill so that the density of the
+// top/bottom solid shells ramps up linearly from the configured value (deepest solid layer) to 100%
+// on the solid layer immediately adjacent to the external skin.
+// This runs after all fill-surface manipulation is done, so the resolved bands survive untouched into
+// make_fills(), where group_fills() turns the per-surface density into separate fills.
+void PrintObject::assign_solid_infill_density_gradient()
+{
+    BOOST_LOG_TRIVIAL(trace) << "assign_solid_infill_density_gradient()";
+
+    const bool spiral = m_print->config().spiral_mode.value;
+    if (spiral)
+        return;
+
+    const size_t num_layers = m_layers.size();
+    if (num_layers == 0)
+        return;
+
+    for (size_t region_id = 0; region_id < this->num_printing_regions(); ++ region_id) {
+        const PrintRegionConfig &region_config = this->printing_region(region_id).config();
+        const int gradient = region_config.internal_solid_infill_gradient.value;
+        if (gradient >= 100)
+            continue; // disabled -> true no-op, leaves surfaces (and their sentinel density) untouched
+
+        const int n_top = region_config.top_shell_layers.value;
+        const int n_bot = region_config.bottom_shell_layers.value;
+        // A top/bottom shell of N configured layers has N-1 *internal* solid layers (the Nth is the
+        // visible external skin), so a ramp needs at least 2 internal solid layers, i.e. N >= 3.
+        if (n_top < 3 && n_bot < 3)
+            continue;
+
+        // The bottom-most layers controlled by the Elephant foot layers density option keep being
+        // handled by it (see Fill.cpp). We still propagate distances through these layers, but we do
+        // not write a gradient density onto them.
+        const bool ef_active = ! is_approx(m_config.elefant_foot_layers_density.get_abs_value(1.), 1.);
+        const int  ef_layers = ef_active ? m_config.elefant_foot_compensation_layers.value : 0;
+
+        // density (percent) for an internal solid area at distance d (>=1) from the external skin,
+        // where maxd is the number of internal solid layers (shell layers - 1). d == 1 (adjacent to the
+        // skin) -> 100%, d >= maxd (deepest internal solid layer) -> the configured gradient value.
+        auto ramp = [gradient](int d, int maxd) -> int {
+            if (maxd <= 1 || d <= 1) return 100;
+            if (d >= maxd)           return gradient;
+            const float dens = 100.f - float(100 - gradient) * float(d - 1) / float(maxd - 1);
+            return int(dens + 0.5f);
+        };
+
+        auto gather = [region_id](const Layer *layer, std::initializer_list<SurfaceType> types) -> ExPolygons {
+            ExPolygons out;
+            for (const Surface &s : layer->regions()[region_id]->fill_surfaces.surfaces)
+                for (SurfaceType t : types)
+                    if (s.surface_type == t) { out.emplace_back(s.expolygon); break; }
+            return union_ex(out);
+        };
+
+        auto is_ef_owned = [&](size_t i) -> bool {
+            const int id = int(m_layers[i]->id());
+            return ef_layers > 0 && id >= 1 && id <= ef_layers;
+        };
+
+        // contributions[i] : (area, density<100) pairs to be written onto layer i.
+        std::vector<std::vector<std::pair<ExPolygons, int>>> contributions(num_layers);
+
+        // --- Top sweep: distance counted downwards from a stTop skin above. ---
+        if (n_top > 2) {
+            std::vector<ExPolygons> prev_bands; // layer i+1 bands, indexed by distance (1-based)
+            for (int i = int(num_layers) - 1; i >= 0; -- i) {
+                m_print->throw_if_canceled();
+                const ExPolygons solid_i = gather(m_layers[i], { stInternalSolid });
+                std::vector<ExPolygons> cur(n_top + 1);
+                if (! solid_i.empty() && i + 1 < int(num_layers)) {
+                    ExPolygons claimed = cur[1] = intersection_ex(solid_i, gather(m_layers[i + 1], { stTop }));
+                    // A solid area is at distance d if the area directly above it (layer i+1) was at d-1.
+                    // The non-empty band shifts to deeper indices as we descend, so scan all d (don't break).
+                    for (int d = 2; d <= n_top; ++ d) {
+                        if (size_t(d - 1) >= prev_bands.size() || prev_bands[d - 1].empty())
+                            continue;
+                        cur[d]  = diff_ex(intersection_ex(solid_i, prev_bands[d - 1]), claimed);
+                        claimed = union_ex(claimed, cur[d]);
+                    }
+                }
+                if (! is_ef_owned(i))
+                    for (int d = 1; d <= n_top; ++ d)
+                        if (! cur[d].empty())
+                            contributions[i].emplace_back(cur[d], ramp(d, n_top - 1));
+                prev_bands = std::move(cur);
+            }
+        }
+
+        // --- Bottom sweep: distance counted upwards from a stBottom / stBottomBridge skin below. ---
+        if (n_bot > 2) {
+            std::vector<ExPolygons> prev_bands; // layer i-1 bands, indexed by distance (1-based)
+            for (int i = 0; i < int(num_layers); ++ i) {
+                m_print->throw_if_canceled();
+                const ExPolygons solid_i = gather(m_layers[i], { stInternalSolid });
+                std::vector<ExPolygons> cur(n_bot + 1);
+                if (! solid_i.empty() && i - 1 >= 0) {
+                    ExPolygons claimed = cur[1] = intersection_ex(solid_i, gather(m_layers[i - 1], { stBottom, stBottomBridge }));
+                    // The non-empty band shifts to deeper indices as we ascend, so scan all d (don't break).
+                    for (int d = 2; d <= n_bot; ++ d) {
+                        if (size_t(d - 1) >= prev_bands.size() || prev_bands[d - 1].empty())
+                            continue;
+                        cur[d]  = diff_ex(intersection_ex(solid_i, prev_bands[d - 1]), claimed);
+                        claimed = union_ex(claimed, cur[d]);
+                    }
+                }
+                if (! is_ef_owned(i))
+                    for (int d = 1; d <= n_bot; ++ d)
+                        if (! cur[d].empty())
+                            contributions[i].emplace_back(cur[d], ramp(d, n_bot - 1));
+                prev_bands = std::move(cur);
+            }
+        }
+
+        // --- Write back: split the internal solid infill into per-density bands. ---
+        for (size_t i = 0; i < num_layers; ++ i) {
+            auto &contribs = contributions[i];
+            // Nothing to do unless some area is actually reduced below full density.
+            if (std::none_of(contribs.begin(), contribs.end(), [](const auto &c) { return c.second < 100; }))
+                continue;
+            LayerRegion *layerm = m_layers[i]->m_regions[region_id];
+            // Higher density (closer to the skin) wins where bands overlap (e.g. top vs. bottom shell).
+            std::sort(contribs.begin(), contribs.end(),
+                      [](const auto &a, const auto &b) { return a.second > b.second; });
+            // Use an existing solid surface as a template to carry thickness / bridge_angle etc.
+            Surface templ(stInternalSolid);
+            for (const Surface &s : layerm->fill_surfaces.surfaces)
+                if (s.surface_type == stInternalSolid) { templ = s; templ.solid_infill_gradient_density = 0; break; }
+            ExPolygons all_solid;
+            layerm->fill_surfaces.remove_type(stInternalSolid, &all_solid);
+            all_solid = union_ex(all_solid);
+            ExPolygons claimed;
+            for (auto &c : contribs) {
+                ExPolygons band = intersection_ex(diff_ex(c.first, claimed), all_solid);
+                if (band.empty())
+                    continue;
+                claimed = union_ex(claimed, band);
+                Surface t = templ;
+                // Full-density bands keep the sentinel (0); only reduced bands carry an explicit density.
+                if (c.second < 100)
+                    t.solid_infill_gradient_density = (unsigned char) c.second;
+                layerm->fill_surfaces.append(band, t);
+            }
+            // Everything not covered by a band stays at full density (sentinel 0).
+            ExPolygons leftover = diff_ex(all_solid, claimed);
+            if (! leftover.empty())
+                layerm->fill_surfaces.append(std::move(leftover), templ);
+        }
+    } // for each region
+} // void PrintObject::assign_solid_infill_density_gradient()
 
 // combine fill surfaces across layers to honor the "infill every N layers" option
 // Idempotence of this method is guaranteed by the fact that we don't remove things from

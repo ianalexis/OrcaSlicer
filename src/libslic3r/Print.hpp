@@ -530,6 +530,9 @@ private:
     void clip_fill_surfaces();
     void discover_horizontal_shells();
     void combine_infill();
+    // Orca: assign a per-surface infill density to internal solid infill so that it ramps up to 100%
+    // towards the external top/bottom skin (internal_solid_infill_gradient option).
+    void assign_solid_infill_density_gradient();
     void _generate_support_material();
     std::pair<FillAdaptive::OctreePtr, FillAdaptive::OctreePtr> prepare_adaptive_infill_data(
         const std::vector<std::pair<const Surface*, float>>& surfaces_w_bottom_z) const;
