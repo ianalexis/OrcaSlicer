@@ -739,6 +739,8 @@ public:
     void update_machine_sync_status();
 
 #if ENABLE_ENVIRONMENT_MAP
+    // Image file names (with extension) available in resources/enviroment_maps, for the Preferences selector.
+    static std::vector<std::string> get_environment_map_files();
     void init_environment_texture();
     unsigned int get_environment_texture_id() const;
 #endif // ENABLE_ENVIRONMENT_MAP

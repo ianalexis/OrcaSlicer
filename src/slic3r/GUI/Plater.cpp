@@ -4460,6 +4460,9 @@ struct Plater::priv
 
 #if ENABLE_ENVIRONMENT_MAP
     GLTexture environment_texture;
+    // File name (relative to resources/enviroment_maps) currently loaded into environment_texture,
+    // so we can reload when the user picks a different map in Preferences.
+    std::string environment_texture_name;
 #endif // ENABLE_ENVIRONMENT_MAP
     Mouse3DController mouse3d_controller;
     View3D* view3D;
@@ -18440,10 +18443,47 @@ bool Plater::get_machine_sync_status()
 }
 
 #if ENABLE_ENVIRONMENT_MAP
+std::vector<std::string> Plater::get_environment_map_files()
+{
+    std::vector<std::string> files;
+    const boost::filesystem::path maps_dir = boost::filesystem::path(resources_dir()) / "enviroment_maps";
+    if (boost::filesystem::is_directory(maps_dir)) {
+        for (auto& entry : boost::filesystem::directory_iterator(maps_dir)) {
+            const std::string ext = boost::algorithm::to_lower_copy(entry.path().extension().string());
+            if (boost::filesystem::is_regular_file(entry.path()) && (ext == ".jpg" || ext == ".jpeg" || ext == ".png"))
+                files.emplace_back(entry.path().filename().string());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
 void Plater::init_environment_texture()
 {
-    if (p->environment_texture.get_id() == 0)
-        p->environment_texture.load_from_file(resources_dir() + "/images/Pmetal_001.png", false, GLTexture::SingleThreaded, false);
+    // Resolve the map file inside resources/enviroment_maps. Fall back to the first available
+    // image when the configured one is missing or unset, so the feature works out of the box.
+    const boost::filesystem::path maps_dir = boost::filesystem::path(resources_dir()) / "enviroment_maps";
+    const std::string selected = wxGetApp().app_config->get("environment_map");
+
+    const std::vector<std::string> files = get_environment_map_files();
+    std::string name;
+    if (!selected.empty() && std::find(files.begin(), files.end(), selected) != files.end())
+        name = selected;
+    else if (!files.empty())
+        name = files.front();
+
+    if (name.empty()) {
+        // No usable map available: drop any previously loaded texture.
+        p->environment_texture.reset();
+        p->environment_texture_name.clear();
+        return;
+    }
+
+    if (p->environment_texture.get_id() != 0 && p->environment_texture_name == name)
+        return; // already loaded
+
+    p->environment_texture.load_from_file((maps_dir / name).string(), false, GLTexture::SingleThreaded, false);
+    p->environment_texture_name = name;
 }
 
 unsigned int Plater::get_environment_texture_id() const

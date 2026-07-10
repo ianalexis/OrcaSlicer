@@ -23,7 +23,7 @@
 
 
 // Enable rendering of objects using environment map
-#define ENABLE_ENVIRONMENT_MAP 0
+#define ENABLE_ENVIRONMENT_MAP 1
 
 // Enable rendering markers for options in preview as fixed screen size points
 #define ENABLE_FIXED_SCREEN_SIZE_POINT_MARKERS 1

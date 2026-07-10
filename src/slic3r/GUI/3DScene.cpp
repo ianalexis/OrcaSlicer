@@ -1116,7 +1116,7 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType       type,
 
 #if ENABLE_ENVIRONMENT_MAP
         unsigned int environment_texture_id = GUI::wxGetApp().plater()->get_environment_texture_id();
-        bool use_environment_texture = environment_texture_id > 0 && GUI::wxGetApp().app_config->get("use_environment_map") == "1";
+        bool use_environment_texture = environment_texture_id > 0 && GUI::wxGetApp().app_config->get_bool("use_environment_map");
         shader->set_uniform("use_environment_tex", use_environment_texture);
         if (use_environment_texture)
             glsafe(::glBindTexture(GL_TEXTURE_2D, environment_texture_id));

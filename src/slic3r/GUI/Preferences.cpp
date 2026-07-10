@@ -1830,6 +1830,32 @@ void PreferencesDialog::create_items()
     );
     g_sizer->Add(item_realistic_smooth_normals);
 
+    auto item_environment_map = create_item_checkbox(
+        _L("Environment map"),
+        _L("Reflects an environment map onto objects in realistic view, giving them a glossy, metallic look."),
+        "use_environment_map"
+    );
+    g_sizer->Add(item_environment_map);
+
+    // Populate the selector with the images found in resources/enviroment_maps (jpg/png).
+    const std::vector<std::string> env_map_files = Plater::get_environment_map_files();
+    if (!env_map_files.empty()) {
+        std::vector<wxString>    env_map_labels;
+        std::vector<std::string> env_map_values;
+        for (const std::string& f : env_map_files) {
+            env_map_labels.emplace_back(wxString::FromUTF8(f.c_str()));
+            env_map_values.emplace_back(f);
+        }
+        auto item_environment_map_image = create_item_combobox(
+            _L("Environment map image"),
+            _L("Selects which image from the environment maps folder to use for reflections."),
+            "environment_map",
+            env_map_labels,
+            env_map_values
+        );
+        g_sizer->Add(item_environment_map_image);
+    }
+
     //// GRAPHICS > Anti-aliasing
     g_sizer->Add(create_item_title(_L("Anti-aliasing")), 1, wxEXPAND);
 

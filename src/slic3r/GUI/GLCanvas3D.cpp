@@ -1977,7 +1977,7 @@ void GLCanvas3D::render(bool only_init)
         return;
 
 #if ENABLE_ENVIRONMENT_MAP
-    if (wxGetApp().is_editor())
+    if (wxGetApp().is_editor() && wxGetApp().app_config->get_bool("use_environment_map"))
         wxGetApp().plater()->init_environment_texture();
 #endif // ENABLE_ENVIRONMENT_MAP
 

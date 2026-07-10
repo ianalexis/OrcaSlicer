@@ -75,12 +75,9 @@ std::pair<bool, std::string> GLShadersManager::init()
     }
 
     // used to render objects in 3d editor
-    valid &= append_shader("gouraud", { prefix + "gouraud.vs", prefix + "gouraud.fs" }
-#if ENABLE_ENVIRONMENT_MAP
-        , { "ENABLE_ENVIRONMENT_MAP"sv }
-#endif // ENABLE_ENVIRONMENT_MAP
-        );
+    valid &= append_shader("gouraud", { prefix + "gouraud.vs", prefix + "gouraud.fs" });
     // used to render objects in 3d editor with phong shading
+    // The environment map is only applied in the realistic (phong) view, so the define is injected here only.
     valid &= append_shader("phong", { prefix + "phong.vs", prefix + "phong.fs" }
 #if ENABLE_ENVIRONMENT_MAP
         , { "ENABLE_ENVIRONMENT_MAP"sv }

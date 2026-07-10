@@ -151,7 +151,9 @@ bool GLTexture::load_from_file(const std::string& filename, bool use_mipmaps, EC
     if (!boost::filesystem::exists(filename))
         return false;
 
-    if (boost::algorithm::iends_with(filename, ".png"))
+    if (boost::algorithm::iends_with(filename, ".png") ||
+        boost::algorithm::iends_with(filename, ".jpg") ||
+        boost::algorithm::iends_with(filename, ".jpeg"))
         return load_from_png(filename, use_mipmaps, compression_type, apply_anisotropy);
     else
         return false;
@@ -729,9 +731,10 @@ bool GLTexture::load_from_png(const std::string& filename, bool use_mipmaps, ECo
 {
     const bool compression_enabled = (compression_type != None) && OpenGLManager::are_compressed_textures_supported();
 
-    // Load a PNG with an alpha channel.
+    // Load a raster image (PNG/JPEG) via wxImage; the type is auto-detected so the same
+    // path handles both formats used by e.g. the environment maps.
     wxImage image;
-    if (!image.LoadFile(wxString::FromUTF8(filename.c_str()), wxBITMAP_TYPE_PNG)) {
+    if (!image.LoadFile(wxString::FromUTF8(filename.c_str()), wxBITMAP_TYPE_ANY)) {
         reset();
         return false;
     }

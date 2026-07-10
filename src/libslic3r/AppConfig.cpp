@@ -183,7 +183,7 @@ void AppConfig::set_defaults()
 
 #if ENABLE_ENVIRONMENT_MAP
         if (get("use_environment_map").empty())
-            set("use_environment_map", false);
+            set_bool("use_environment_map", false);
 #endif // ENABLE_ENVIRONMENT_MAP
 
         if (get("use_inches").empty())
